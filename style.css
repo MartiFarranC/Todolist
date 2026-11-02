@@ -268,6 +268,40 @@ input[type="time"], input[type="number"] {
   border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%;
 }
 
+/* ---------- Mode rutina / marge: la pantalla sencera canvia ---------- */
+body { transition: background-color .4s ease; }
+body[data-mode="routine"] { background: var(--routine); }
+body[data-mode="routine"] .card { background: var(--surface); border-color: var(--routine-edge); }
+body[data-mode="buffer"] {
+  background: repeating-linear-gradient(135deg, var(--bg) 0 14px, var(--routine) 14px 16px);
+}
+body[data-mode="routine"] #energy-toggle,
+body[data-mode="buffer"] #energy-toggle { display: none; }
+body[data-mode="routine"] .capture { background: linear-gradient(to top, var(--routine) 70%, transparent); }
+body[data-mode="buffer"] .capture { background: linear-gradient(to top, var(--bg) 70%, transparent); }
+
+.focus { min-height: 62vh; display: flex; flex-direction: column; align-items: center; text-align: center; }
+body[data-mode="buffer"] .focus { border-style: dashed; border-color: var(--routine-edge); }
+.focus .title { margin-bottom: 8px; }
+.ring-wrap { position: relative; width: min(56vw, 210px); aspect-ratio: 1; margin: 12px auto 8px; }
+.ring { width: 100%; height: 100%; }
+.ring-bg { fill: none; stroke: var(--line); stroke-width: 10; }
+.ring-fg { fill: none; stroke: var(--routine-edge); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+body[data-mode="buffer"] .ring-fg { stroke: var(--accent); opacity: .75; }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-pct { font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.ring-label { color: var(--muted); font-size: .9rem; }
+.focus-line { margin: 4px 0 0; font-weight: 700; font-size: 1.1rem; }
+.focus-left { margin: 0 0 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.focus-msg { margin: 4px 0 16px; font-size: .95rem; }
+.focus-next {
+  margin: auto 0 8px; width: 100%; text-align: left; padding: 12px 14px; border-radius: 12px;
+  background: var(--accent-soft); font-size: .95rem;
+}
+.focus-next .label { display: block; font-size: .8rem; color: var(--muted); }
+.focus-peek { margin-top: 4px; }
+.busy-line { cursor: pointer; }
+
 /* Una petita recompensa en marcar Fet */
 @keyframes settle {
   0% { transform: scale(1); }

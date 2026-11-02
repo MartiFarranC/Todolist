@@ -78,9 +78,19 @@
   function render() {
     const now = Logic.pickNow(state.tasks, { lowEnergy: state.lowEnergy });
     state.current = now;
+    const cur = Logic.currentBlock(state.blocks);
+    const curKey = cur ? cur.block.id + ':' + cur.phase : null;
+    if (state.overrideKey && state.overrideKey !== curKey) state.overrideKey = null;
+    const focus = cur && state.overrideKey !== curKey;
+    document.body.dataset.mode = focus ? (cur.phase === 'during' ? 'routine' : 'buffer') : 'free';
+    $('#focus').hidden = !focus;
+    $('#now').hidden = !!focus;
+    $('#later').hidden = !!focus;
+    if (focus) { $('#split').hidden = true; renderFocus(cur, curKey); }
     renderNow(now);
     renderLater(now);
     renderBusyLine();
+    if (focus) $('#busy-line').hidden = true;
     if (!$('#schedule').hidden) renderSchedule();
     const et = $('#energy-toggle');
     et.setAttribute('aria-pressed', String(state.lowEnergy));
@@ -91,6 +101,72 @@
     if (cls) e.className = cls;
     if (text != null) e.textContent = text;
     return e;
+  }
+
+  // Pantalla principal en mode rutina o marge
+  function ring(pct) {
+    const r = 54, c = 2 * Math.PI * r;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 128 128');
+    svg.setAttribute('class', 'ring');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `Portes el ${pct}%`);
+    const bg = document.createElementNS(ns, 'circle');
+    const fg = document.createElementNS(ns, 'circle');
+    for (const x of [bg, fg]) { x.setAttribute('cx', 64); x.setAttribute('cy', 64); x.setAttribute('r', r); }
+    bg.setAttribute('class', 'ring-bg');
+    fg.setAttribute('class', 'ring-fg');
+    fg.setAttribute('stroke-dasharray', `${(c * pct) / 100} ${c}`);
+    fg.setAttribute('transform', 'rotate(-90 64 64)');
+    svg.append(bg, fg);
+    return svg;
+  }
+
+  function renderFocus(cur, key) {
+    const box = $('#focus');
+    box.innerHTML = '';
+    const b = cur.block;
+    const r = Logic.progress(cur) || { pct: 0, leftMin: cur.end - cur.start };
+    const left = Logic.durationText(r.leftMin);
+    const info = {
+      during: { eyebrow: 'Rutina', title: b.label,
+                line: `Acaba a les ${Logic.hm(b.end_time)}`, left: `Queden ${left}` },
+      before: { eyebrow: 'Marge · preparar-se', title: `Prepara't per a ${b.label}`,
+                line: `Comença a les ${Logic.hm(b.start_time)}`, left: `D'aquí a ${left}` },
+      after:  { eyebrow: 'Marge · tornada', title: `Tornant de ${b.label}`,
+                line: `Lliure a les ${Logic.fmtMin(cur.end)}`, left: `D'aquí a ${left}` },
+    }[cur.phase];
+
+    box.append(el('p', 'eyebrow', info.eyebrow));
+    box.append(el('h2', 'title', info.title));
+    const wrap = el('div', 'ring-wrap');
+    wrap.append(ring(r.pct));
+    const center = el('div', 'ring-center');
+    center.append(el('span', 'ring-pct', r.pct + '%'), el('span', 'ring-label', 'fet'));
+    wrap.append(center);
+    box.append(wrap);
+    box.append(el('p', 'focus-line', info.line));
+    box.append(el('p', 'focus-left', info.left));
+
+    const msg = {
+      during: 'Ara només toca això. Les tasques i els avisos esperen.',
+      before: 'Agafa el que necessitis i surt amb calma.',
+      after: 'Sense pressa. Quan arribis, et dic què toca.',
+    }[cur.phase];
+    box.append(el('p', 'muted focus-msg', msg));
+
+    const up = Logic.nextUpcoming(state.tasks) ;
+    const nextTask = up ? up.task : state.current;
+    if (nextTask) {
+      const n = el('p', 'focus-next');
+      n.append(el('span', 'label', 'Després'), document.createTextNode(nextTask.title));
+      box.append(n);
+    }
+
+    const peek = el('button', 'link focus-peek', 'Veure les tasques igualment');
+    peek.onclick = () => { state.overrideKey = key; render(); };
+    box.append(peek);
   }
 
   function renderNow(t) {
@@ -507,6 +583,7 @@
     all.hidden = !all.hidden;
     $('#show-all').textContent = all.hidden ? 'Veure-ho tot' : 'Amagar';
   };
+  $('#busy-line').onclick = () => { state.overrideKey = null; render(); };
   $('#open-schedule').onclick = () => { sched.date = new Date(); show('schedule'); renderSchedule(); window.scrollTo(0, 0); };
   for (const t of document.querySelectorAll('.segmented [role=tab]')) t.onclick = () => setView(t.dataset.view);
   $('#prev-period').onclick = () => shiftPeriod(-1);
