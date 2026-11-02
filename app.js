@@ -8,6 +8,7 @@
   const state = {
     tasks: [],
     blocks: [],
+    events: [],
     lowEnergy: readPref('lowEnergy') === '1',
     current: null,
   };
@@ -74,6 +75,29 @@
     return true;
   }
 
+  // ---------- F1 i MotoGP ----------
+  // Primer la font en directe (sempre al dia); si falla, la còpia del repo.
+  async function loadMotorsport() {
+    const year = new Date().getFullYear();
+    const all = [];
+    for (const series of ['f1', 'motogp']) {
+      for (const y of [year, year + 1]) {
+        const urls = [`https://raw.githubusercontent.com/sportstimes/f1/main/_db/${series}/${y}.json`,
+                      `data/${series}-${y}.json`];
+        for (const url of urls) {
+          try {
+            const res = await fetch(url, { cache: 'no-cache' });
+            if (!res.ok) continue;
+            all.push(...Logic.motorsportSessions(series, await res.json()));
+            break;
+          } catch { /* prova la següent */ }
+        }
+      }
+    }
+    state.events = all;
+    if (!$('#schedule').hidden) renderSchedule();
+  }
+
   // ---------- Pintar ----------
   function render() {
     const now = Logic.pickNow(state.tasks, { lowEnergy: state.lowEnergy });
@@ -103,26 +127,7 @@
     return e;
   }
 
-  // Pantalla principal en mode rutina o marge
-  function ring(pct) {
-    const r = 54, c = 2 * Math.PI * r;
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 128 128');
-    svg.setAttribute('class', 'ring');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', `Portes el ${pct}%`);
-    const bg = document.createElementNS(ns, 'circle');
-    const fg = document.createElementNS(ns, 'circle');
-    for (const x of [bg, fg]) { x.setAttribute('cx', 64); x.setAttribute('cy', 64); x.setAttribute('r', r); }
-    bg.setAttribute('class', 'ring-bg');
-    fg.setAttribute('class', 'ring-fg');
-    fg.setAttribute('stroke-dasharray', `${(c * pct) / 100} ${c}`);
-    fg.setAttribute('transform', 'rotate(-90 64 64)');
-    svg.append(bg, fg);
-    return svg;
-  }
-
+  // Pantalla principal en mode rutina o marge: mínima, sense targeta.
   function renderFocus(cur, key) {
     const box = $('#focus');
     box.innerHTML = '';
@@ -130,43 +135,25 @@
     const r = Logic.progress(cur) || { pct: 0, leftMin: cur.end - cur.start };
     const left = Logic.durationText(r.leftMin);
     const info = {
-      during: { eyebrow: 'Rutina', title: b.label,
-                line: `Acaba a les ${Logic.hm(b.end_time)}`, left: `Queden ${left}` },
-      before: { eyebrow: 'Marge · preparar-se', title: `Prepara't per a ${b.label}`,
-                line: `Comença a les ${Logic.hm(b.start_time)}`, left: `D'aquí a ${left}` },
-      after:  { eyebrow: 'Marge · tornada', title: `Tornant de ${b.label}`,
-                line: `Lliure a les ${Logic.fmtMin(cur.end)}`, left: `D'aquí a ${left}` },
+      during: { eyebrow: 'Rutina', title: b.label, line: `Fins a les ${Logic.hm(b.end_time)}` },
+      before: { eyebrow: 'Marge', title: `Prepara't per a ${b.label}`, line: `Comença a les ${Logic.hm(b.start_time)}` },
+      after:  { eyebrow: 'Marge', title: `Tornant de ${b.label}`, line: `Lliure a les ${Logic.fmtMin(cur.end)}` },
     }[cur.phase];
 
     box.append(el('p', 'eyebrow', info.eyebrow));
-    box.append(el('h2', 'title', info.title));
-    const wrap = el('div', 'ring-wrap');
-    wrap.append(ring(r.pct));
-    const center = el('div', 'ring-center');
-    center.append(el('span', 'ring-pct', r.pct + '%'), el('span', 'ring-label', 'fet'));
-    wrap.append(center);
-    box.append(wrap);
+    box.append(el('h2', 'focus-title', info.title));
     box.append(el('p', 'focus-line', info.line));
-    box.append(el('p', 'focus-left', info.left));
+    box.append(bar(r.pct, `Portes el ${r.pct}%`));
+    box.append(el('p', 'focus-left', `${r.pct}% fet · queden ${left}`));
 
-    const msg = {
-      during: 'Ara només toca això. Les tasques i els avisos esperen.',
-      before: 'Agafa el que necessitis i surt amb calma.',
-      after: 'Sense pressa. Quan arribis, et dic què toca.',
-    }[cur.phase];
-    box.append(el('p', 'muted focus-msg', msg));
-
-    const up = Logic.nextUpcoming(state.tasks) ;
+    const up = Logic.nextUpcoming(state.tasks);
     const nextTask = up ? up.task : state.current;
-    if (nextTask) {
-      const n = el('p', 'focus-next');
-      n.append(el('span', 'label', 'Després'), document.createTextNode(nextTask.title));
-      box.append(n);
-    }
-
-    const peek = el('button', 'link focus-peek', 'Veure les tasques igualment');
+    const foot = el('div', 'focus-foot');
+    if (nextTask) foot.append(el('p', 'focus-next', 'Després: ' + nextTask.title));
+    const peek = el('button', 'link focus-peek', 'Veure les tasques');
     peek.onclick = () => { state.overrideKey = key; render(); };
-    box.append(peek);
+    foot.append(peek);
+    box.append(foot);
   }
 
   function renderNow(t) {
@@ -313,7 +300,6 @@
     $('#view-day').hidden = sched.view !== 'day';
     $('#view-week').hidden = sched.view !== 'week';
     $('#view-month').hidden = sched.view !== 'month';
-    $('.legend').hidden = sched.view === 'month';
     const title = periodTitle();
     $('#period-title').textContent = title.charAt(0).toUpperCase() + title.slice(1);
     if (sched.view === 'day') renderDay();
@@ -327,7 +313,7 @@
     tl.innerHTML = '';
     const now = new Date();
     const isToday = Logic.sameDay(sched.date, now);
-    const items = Logic.dayItems(state.blocks, state.tasks, sched.date, now);
+    const items = Logic.dayItems(state.blocks, state.tasks, sched.date, now, state.events);
     let markerDone = !isToday;
     const marker = () => {
       tl.append(el('li', 'marker', 'Ara · ' + Logic.fmtMin(now.getHours() * 60 + now.getMinutes())));
@@ -337,11 +323,19 @@
       if (!markerDone && i.state !== 'past') {
         if (i.state === 'next') marker();
       }
-      const kindClass = { block: 'routine-item', buffer: 'buffer-item', task: 'task-item' }[i.kind];
+      const kindClass = { block: 'routine-item', buffer: 'buffer-item', task: 'task-item',
+                          event: `routine-item event-item series-${i.series}` }[i.kind];
       const li = el('li', `${kindClass} is-${i.state}`);
       const time = i.end > i.start ? `${Logic.fmtMin(i.start)} – ${Logic.fmtMin(i.end)}` : Logic.fmtMin(i.start);
       li.append(el('span', 'time', i.kind === 'task' && i.due ? 'Abans de les ' + Logic.fmtMin(i.start) : time));
-      li.append(el('span', 'what', i.label));
+      if (i.kind === 'event') {
+        const what = el('span', 'what');
+        what.append(el('span', `badge series-${i.series}`, i.event.seriesName),
+                    document.createTextNode(`${i.event.gp} · ${i.event.sessionName}`));
+        li.append(what);
+      } else {
+        li.append(el('span', 'what', i.label));
+      }
       if (i.state === 'now') {
         const r = Logic.progress(i, now);
         if (r) {
@@ -361,7 +355,7 @@
     grid.innerHTML = '';
     const now = new Date();
     const days = Logic.weekDays(sched.date);
-    const perDay = days.map(d => Logic.dayItems(state.blocks, state.tasks, d, now));
+    const perDay = days.map(d => Logic.dayItems(state.blocks, state.tasks, d, now, state.events));
     // Franja visible: de la primera a l'última cosa, com a mínim 8:00 – 21:00
     let lo = 8 * 60, hi = 21 * 60;
     for (const items of perDay) for (const i of items) { lo = Math.min(lo, i.start); hi = Math.max(hi, i.end, i.start + 30); }
@@ -394,11 +388,13 @@
       col.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric' }));
       col.onclick = () => { sched.date = d; setView('day'); };
       for (const i of perDay[idx]) {
-        const ev = el('div', `ev ${i.kind === 'block' ? 'routine' : i.kind}${i.state === 'past' ? ' past' : ''}`,
-          i.kind === 'buffer' ? '' : i.label);
+        const cls = i.kind === 'block' ? 'routine' : i.kind === 'event' ? `event series-${i.series}` : i.kind;
+        const text = i.kind === 'buffer' ? '' : i.kind === 'event' ? i.event.seriesShort : i.label;
+        const ev = el('div', `ev ${cls}${i.state === 'past' ? ' past' : ''}`, text);
         ev.style.top = (i.start - lo) * PX + 'px';
         ev.style.height = Math.max((i.end - i.start) * PX, 16) + 'px';
         ev.title = `${Logic.fmtMin(i.start)} ${i.label}`;
+        ev.setAttribute('aria-label', ev.title);
         col.append(ev);
       }
       if (Logic.sameDay(d, now)) {
@@ -429,11 +425,18 @@
         b.type = 'button';
         b.append(el('span', null, String(d.getDate())));
         const dots = el('span', 'dots');
+        const evs = Logic.eventsOnDay(state.events, d);
+        const series = [...new Set(evs.map(e => e.series))];
+        for (const sr of series) {
+          const major = evs.some(e => e.series === sr && e.event.session.match(/^(gp|race)$/));
+          dots.append(el('span', `dot series-${sr}${major ? ' major' : ''}`));
+        }
         for (const _t of Logic.tasksOnDay(state.tasks, d).slice(0, 3)) dots.append(el('span', 'dot'));
         b.append(dots);
         const nTasks = Logic.tasksOnDay(state.tasks, d).length;
         b.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long' }) +
-          (nTasks ? `, ${nTasks} ${nTasks === 1 ? 'tasca' : 'tasques'}` : ''));
+          (nTasks ? `, ${nTasks} ${nTasks === 1 ? 'tasca' : 'tasques'}` : '') +
+          (series.length ? ', ' + series.map(x => Logic.SERIES[x].name).join(' i ') : ''));
         b.onclick = () => { sched.date = d; setView('day'); };
         grid.append(b);
       }
@@ -624,7 +627,7 @@
   let signedIn = false;
   sb.auth.onAuthStateChange((_ev, session) => {
     signedIn = !!session;
-    if (session) { if ($('#schedule').hidden) show('home'); load(); subscribe(); }
+    if (session) { if ($('#schedule').hidden) show('home'); load(); subscribe(); if (!state.events.length) loadMotorsport(); }
     else show('login');
   });
 

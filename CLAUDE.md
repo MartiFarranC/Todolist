@@ -52,6 +52,13 @@ rpc claude_config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}
 - No programis tasques dins de rutines ni dels seus marges: fes servir `start_at` per fer-les aparèixer després
   (p. ex. feina 9–13 → la tarda comença a les 13:30; gimnàs 16:30–17:30 → lliure de 18:00).
 
+## F1 i MotoGP
+- L'app mostra totes les sessions (lliures, pràctica, classificació, sprint i cursa) com a rutines,
+  amb el color de cada campionat (F1 terracota, MotoGP blau) i una etiqueta.
+- Font: github.com/sportstimes/f1 (`_db/f1/<any>.json`, `_db/motogp/<any>.json`), llegida en directe des del navegador.
+  Si falla, es fa servir la còpia de `data/`. Actualitza-la a l'inici de cada temporada.
+- No bloquegen avisos ni tenen marge. No programis tasques importants a sobre d'una cursa o sprint.
+
 ## Com prioritzar
 1. Primer el que té data límit propera o conseqüències si no es fa (importance 3).
 2. Barreja tasques fàcils (energy low) entre les difícils per mantenir l'impuls.

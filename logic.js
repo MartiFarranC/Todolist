@@ -133,8 +133,8 @@
   }
 
   // Elements d'un dia: rutines (blocs fixos) + tasques amb hora aquell dia.
-  function dayItems(blocks, tasks, date = new Date(), now = new Date()) {
-    const items = [];
+  function dayItems(blocks, tasks, date = new Date(), now = new Date(), events = []) {
+    const items = eventsOnDay(events, date);
     for (const b of blocksForDay(blocks, date)) {
       const s = minutesOf(b.start_time), e = minutesOf(b.end_time), buf = bufferOf(b);
       if (buf > 0) items.push({ kind: 'buffer', phase: 'before', label: `Preparar-se per a ${b.label}`,
@@ -152,14 +152,14 @@
     }
     const today = startOfDay(now).getTime(), d = startOfDay(date).getTime();
     const m = minutesNow(now);
-    const order = { buffer: 0, block: 1, task: 2 };
+    const order = { buffer: 0, block: 1, event: 2, task: 3 };
     return items.sort((a, b) => a.start - b.start || order[a.kind] - order[b.kind]).map(i => ({
       ...i,
       state: d < today ? 'past' : d > today ? 'next'
         : i.start <= m && m < i.end ? 'now' : i.start < m ? 'past' : 'next',
     }));
   }
-  function todayTimeline(blocks, tasks, now = new Date()) { return dayItems(blocks, tasks, now, now); }
+  function todayTimeline(blocks, tasks, now = new Date(), events = []) { return dayItems(blocks, tasks, now, now, events); }
 
   // Progrés d'un element en curs: percentatge fet i minuts que queden.
   function progress(item, now = new Date()) {
@@ -213,6 +213,47 @@
 
   function fmtMin(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
 
+  // ---------- F1 i MotoGP ----------
+  // Dades de github.com/sportstimes/f1 (f1calendar.com i motogpcalendar.com).
+  const SERIES = {
+    f1: { name: 'F1', short: 'F1', sessions: {
+      fp1: ['Lliures 1', 60], fp2: ['Lliures 2', 60], fp3: ['Lliures 3', 60],
+      sprintQualifying: ['Classificació sprint', 45], sprint: ['Sprint', 60],
+      qualifying: ['Classificació', 60], gp: ['Cursa', 120] } },
+    motogp: { name: 'MotoGP', short: 'MGP', sessions: {
+      fp1: ['Lliures 1', 45], practice: ['Pràctica', 60], fp2: ['Lliures 2', 30],
+      qualifying1: ['Classificació Q1', 15], qualifying2: ['Classificació Q2', 15],
+      sprint: ['Sprint', 30], race: ['Cursa', 45] } },
+  };
+
+  // Converteix el JSON de sportstimes en sessions: {series, gp, session, label, start, end}
+  function motorsportSessions(series, json) {
+    const def = SERIES[series];
+    const out = [];
+    for (const r of (json && json.races) || []) {
+      const gp = series === 'f1' ? r.location : r.name;
+      for (const [key, iso] of Object.entries(r.sessions || {})) {
+        const meta = def.sessions[key];
+        if (!meta || !iso) continue;           // p. ex. el warm-up no s'inclou
+        const start = new Date(iso);
+        if (isNaN(start)) continue;
+        out.push({ series, seriesName: def.name, seriesShort: def.short, gp, round: r.round, session: key, sessionName: meta[0],
+                   major: ['gp', 'race', 'sprint', 'qualifying', 'qualifying2'].includes(key),
+                   start, end: new Date(start.getTime() + meta[1] * 60000),
+                   label: `${def.name} · ${gp} · ${meta[0]}` });
+      }
+    }
+    return out.sort((a, b) => a.start - b.start);
+  }
+
+  // Sessions d'un dia, com a elements de l'horari
+  function eventsOnDay(events, date) {
+    return (events || []).filter(e => sameDay(e.start, date)).map(e => ({
+      kind: 'event', series: e.series, label: e.label, start: minutesNow(e.start),
+      end: sameDay(e.end, e.start) ? minutesNow(e.end) : 1440, event: e,
+    }));
+  }
+
   const DAY_NAMES = ['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'];
   function daysText(days) {
     const d = [...days].sort((a, b) => a - b);
@@ -222,7 +263,7 @@
     return d.map(x => DAY_NAMES[x - 1]).join(', ');
   }
 
-  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES,
+  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
     queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;

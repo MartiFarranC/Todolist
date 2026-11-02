@@ -268,38 +268,51 @@ input[type="time"], input[type="number"] {
   border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%;
 }
 
+/* ---------- F1 i MotoGP: es veuen com a rutina, amb el color de cada campionat ---------- */
+:root { --f1: #b5524a; --f1-soft: #f3e1dd; --motogp: #3d6f99; --motogp-soft: #dfe8f1; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --f1: #d98a80; --f1-soft: #3b2826; --motogp: #8db4d6; --motogp-soft: #233140; }
+}
+:root[data-theme="dark"] { --f1: #d98a80; --f1-soft: #3b2826; --motogp: #8db4d6; --motogp-soft: #233140; }
+
+.badge {
+  display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .03em;
+  padding: 1px 7px; border-radius: 6px; margin-right: 8px; vertical-align: 1px;
+  color: var(--bg);
+}
+.badge.series-f1 { background: var(--f1); }
+.badge.series-motogp { background: var(--motogp); }
+.legend .badge { margin: 0 0 0 10px; }
+.timeline .event-item .what::before { content: none; }
+.timeline .event-item.series-f1 { background: var(--f1-soft); border-left-color: var(--f1); }
+.timeline .event-item.series-motogp { background: var(--motogp-soft); border-left-color: var(--motogp); }
+.week-grid .ev.event { font-weight: 700; font-size: .6rem; color: var(--text); min-height: 14px; z-index: 1; }
+.week-grid .ev.event.series-f1 { background: var(--f1-soft); border-left: 3px solid var(--f1); right: 50%; }
+.week-grid .ev.event.series-motogp { background: var(--motogp-soft); border-left: 3px solid var(--motogp); left: 50%; }
+.month-grid .dot.series-f1 { background: var(--f1); border-radius: 2px; }
+.month-grid .dot.series-motogp { background: var(--motogp); border-radius: 2px; }
+.month-grid .dot.major { width: 10px; }
+.legend { flex-wrap: wrap; }
+
 /* ---------- Mode rutina / marge: la pantalla sencera canvia ---------- */
 body { transition: background-color .4s ease; }
 body[data-mode="routine"] { background: var(--routine); }
 body[data-mode="routine"] .card { background: var(--surface); border-color: var(--routine-edge); }
-body[data-mode="buffer"] {
-  background: repeating-linear-gradient(135deg, var(--bg) 0 14px, var(--routine) 14px 16px);
-}
+body[data-mode="buffer"] { background: color-mix(in srgb, var(--routine) 45%, var(--bg)); }
 body[data-mode="routine"] #energy-toggle,
 body[data-mode="buffer"] #energy-toggle { display: none; }
 body[data-mode="routine"] .capture { background: linear-gradient(to top, var(--routine) 70%, transparent); }
 body[data-mode="buffer"] .capture { background: linear-gradient(to top, var(--bg) 70%, transparent); }
 
-.focus { min-height: 62vh; display: flex; flex-direction: column; align-items: center; text-align: center; }
-body[data-mode="buffer"] .focus { border-style: dashed; border-color: var(--routine-edge); }
-.focus .title { margin-bottom: 8px; }
-.ring-wrap { position: relative; width: min(56vw, 210px); aspect-ratio: 1; margin: 12px auto 8px; }
-.ring { width: 100%; height: 100%; }
-.ring-bg { fill: none; stroke: var(--line); stroke-width: 10; }
-.ring-fg { fill: none; stroke: var(--routine-edge); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray .6s ease; }
-body[data-mode="buffer"] .ring-fg { stroke: var(--accent); opacity: .75; }
-.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ring-pct { font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
-.ring-label { color: var(--muted); font-size: .9rem; }
-.focus-line { margin: 4px 0 0; font-weight: 700; font-size: 1.1rem; }
-.focus-left { margin: 0 0 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.focus-msg { margin: 4px 0 16px; font-size: .95rem; }
-.focus-next {
-  margin: auto 0 8px; width: 100%; text-align: left; padding: 12px 14px; border-radius: 12px;
-  background: var(--accent-soft); font-size: .95rem;
-}
-.focus-next .label { display: block; font-size: .8rem; color: var(--muted); }
-.focus-peek { margin-top: 4px; }
+.focus { min-height: 68vh; display: flex; flex-direction: column; justify-content: center; padding: 0 4px; }
+.focus-title { font-size: 2.4rem; line-height: 1.15; margin: 0 0 6px; overflow-wrap: anywhere; }
+.focus-line { margin: 0 0 18px; font-size: 1.15rem; }
+.focus .bar { height: 4px; margin: 0; background: color-mix(in srgb, var(--routine-edge) 25%, transparent); }
+body[data-mode="buffer"] .focus .bar > span { background: var(--accent); }
+.focus-left { margin: 8px 0 0; color: var(--muted); font-size: .95rem; font-variant-numeric: tabular-nums; }
+.focus-foot { margin-top: 56px; color: var(--muted); font-size: .95rem; }
+.focus-next { margin: 0 0 4px; }
+.focus-peek { padding-left: 0; }
 .busy-line { cursor: pointer; }
 
 /* Una petita recompensa en marcar Fet */
