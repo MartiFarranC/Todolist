@@ -91,6 +91,9 @@ create table if not exists public.schedule_blocks (
   busy       boolean not null default true,
   created_at timestamptz not null default now()
 );
+-- Marge abans i després (preparar-se, desplaçar-se), en minuts
+alter table public.schedule_blocks add column if not exists buffer_min int not null default 30
+  check (buffer_min between 0 and 180);
 
 insert into public.schedule_blocks (label, days, start_time, end_time)
 select * from (values
@@ -282,18 +285,19 @@ begin
 end $$;
 
 -- Horari: blocks = null només llegeix; un array substitueix tot l'horari.
--- [{"label":"Feina","days":[1,2,3,4,5],"start_time":"09:00","end_time":"13:00","busy":true}]
+-- [{"label":"Feina","days":[1,2,3,4,5],"start_time":"09:00","end_time":"13:00","busy":true,"buffer_min":30}]
 create or replace function public.claude_schedule(key text, blocks jsonb default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 begin
   perform private.check_key(key);
   if blocks is not null then
     delete from public.schedule_blocks where true;
-    insert into public.schedule_blocks (label, days, start_time, end_time, busy)
+    insert into public.schedule_blocks (label, days, start_time, end_time, busy, buffer_min)
     select x->>'label',
            array(select jsonb_array_elements_text(x->'days')::int),
            (x->>'start_time')::time, (x->>'end_time')::time,
-           coalesce((x->>'busy')::boolean, true)
+           coalesce((x->>'busy')::boolean, true),
+           coalesce((x->>'buffer_min')::int, 30)
     from jsonb_array_elements(blocks) x;
   end if;
   return coalesce((select jsonb_agg(to_jsonb(b) order by b.start_time) from public.schedule_blocks b), '[]');
@@ -346,8 +350,8 @@ language sql stable as $$
     select 1 from public.schedule_blocks b
     where b.busy
       and extract(isodow from now() at time zone c.timezone)::int = any (b.days)
-      and (now() at time zone c.timezone)::time >= b.start_time
-      and (now() at time zone c.timezone)::time <  b.end_time
+      and (now() at time zone c.timezone)::time >= b.start_time - make_interval(mins => b.buffer_min)
+      and (now() at time zone c.timezone)::time <  b.end_time   + make_interval(mins => b.buffer_min)
   )
 $$;
 

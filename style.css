@@ -152,6 +152,7 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
   margin: -8px 0 12px; padding: 12px 14px; border-radius: 12px;
   background: var(--routine); border-left: 4px solid var(--routine-edge); font-size: .95rem;
 }
+.busy-line.buffer { background: transparent; border: 1px dashed var(--routine-edge); border-left-width: 4px; border-left-style: solid; }
 .busy-line .line1 { display: flex; justify-content: space-between; gap: 8px; }
 .busy-line .pct { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 
@@ -185,6 +186,11 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
 .timeline .what { display: block; }
 .timeline .routine-item { background: var(--routine); border-left: 4px solid var(--routine-edge); }
 .timeline .routine-item .what::before { content: '↻ '; color: var(--routine-edge); }
+.timeline .buffer-item {
+  border: 1px dashed var(--routine-edge); padding: 6px 14px; font-size: .9rem; color: var(--muted);
+}
+.timeline .buffer-item .time { display: inline; margin-right: 8px; }
+.timeline .buffer-item .what { display: inline; }
 .timeline .task-item { border: 1px solid var(--line); background: var(--surface); }
 .timeline .task-item.is-now { border-color: var(--accent); }
 .timeline .is-past { opacity: .45; }
@@ -211,6 +217,10 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
   overflow: hidden; line-height: 1.15; font-size: .68rem; white-space: nowrap; text-overflow: clip;
 }
 .week-grid .ev.routine { background: var(--routine); border-left: 3px solid var(--routine-edge); }
+.week-grid .ev.buffer {
+  padding: 0; background: repeating-linear-gradient(135deg, transparent 0 4px, var(--routine) 4px 7px);
+  border-left: 3px solid var(--routine); border-radius: 4px;
+}
 .week-grid .ev.task { background: var(--accent-soft); border-left: 3px solid var(--accent); min-height: 16px; }
 .week-grid .nowline { position: absolute; left: -2px; right: -2px; height: 2px; background: var(--accent); z-index: 2; }
 .week-grid .past { opacity: .5; }
@@ -232,8 +242,10 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
 
 .legend { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); margin: 14px 0 4px; }
 .legend .swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
-.legend .swatch + .swatch, .legend .swatch.task { margin-left: 10px; }
+.legend .swatch + .swatch, .legend .swatch.buffer { border: 1px dashed var(--routine-edge); }
+.legend .swatch.task { margin-left: 10px; }
 .legend .swatch.routine { background: var(--routine); border-left: 3px solid var(--routine-edge); }
+.legend .swatch.buffer { border: 1px dashed var(--routine-edge); }
 .legend .swatch.task { background: var(--accent-soft); border-left: 3px solid var(--accent); }
 
 .section-title { font-size: 1.3rem; margin: 4px 0 12px; }
@@ -251,7 +263,7 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
 .days .chip { min-width: 44px; padding: 6px 8px; }
 .times label { flex: 1; }
 .check { display: flex !important; flex-direction: row; align-items: center; gap: 8px; }
-input[type="time"] {
+input[type="time"], input[type="number"] {
   font: inherit; color: var(--text); background: var(--surface);
   border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%;
 }

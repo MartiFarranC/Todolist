@@ -42,11 +42,15 @@ rpc claude_config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}
 ## Horari del Martí
 - Feina: de dilluns a divendres, 9:00 a 13:00.
 - Gimnàs: de dilluns a divendres, 16:30 a 17:30.
+- 30 min de marge abans i després de cada rutina (desplaçar-se o preparar-se).
 - L'horari viu a la taula `schedule_blocks` (el Martí l'edita des de la pantalla Horari de l'app).
   Durant un bloc amb `busy = true`, els avisos normals i importants esperen.
   Llegeix-lo abans de programar res: `rpc claude_schedule "{\"key\":\"$TODO_CLAUDE_KEY\"}"`.
   Substituir-lo sencer: afegeix `\"blocks\":[{\"label\":\"Feina\",\"days\":[1,2,3,4,5],\"start_time\":\"09:00\",\"end_time\":\"13:00\"}]`.
-- No programis tasques dins de blocs ocupats: fes servir `start_at` per fer-les aparèixer després.
+- Cada rutina té un marge (`buffer_min`, per defecte 30 min) abans i després per preparar-se i desplaçar-se.
+  Aquest marge també compta com a ocupat.
+- No programis tasques dins de rutines ni dels seus marges: fes servir `start_at` per fer-les aparèixer després
+  (p. ex. feina 9–13 → la tarda comença a les 13:30; gimnàs 16:30–17:30 → lliure de 18:00).
 
 ## Com prioritzar
 1. Primer el que té data límit propera o conseqüències si no es fa (importance 3).

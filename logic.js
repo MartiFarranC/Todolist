@@ -109,10 +109,23 @@
       .sort((a, b) => minutesOf(a.start_time) - minutesOf(b.start_time));
   }
 
+  // Marge abans i després de cada rutina (preparar-se, desplaçar-se). Per defecte 30 min.
+  function bufferOf(b) { return b.buffer_min ?? 30; }
+
+  // Rutina en curs ara, incloent-hi els marges. phase: 'before' | 'during' | 'after'
   function currentBlock(blocks, now = new Date()) {
     const m = minutesNow(now);
-    return blocksForDay(blocks, now)
-      .find(b => b.busy !== false && minutesOf(b.start_time) <= m && m < minutesOf(b.end_time)) || null;
+    const todays = blocksForDay(blocks, now).filter(b => b.busy !== false);
+    for (const b of todays) {
+      const s = minutesOf(b.start_time), e = minutesOf(b.end_time);
+      if (s <= m && m < e) return { block: b, phase: 'during', start: s, end: e };
+    }
+    for (const b of todays) {
+      const s = minutesOf(b.start_time), e = minutesOf(b.end_time), buf = bufferOf(b);
+      if (s - buf <= m && m < s) return { block: b, phase: 'before', start: s - buf, end: s };
+      if (e <= m && m < e + buf) return { block: b, phase: 'after', start: e, end: e + buf };
+    }
+    return null;
   }
 
   function sameDay(a, b) {
@@ -121,9 +134,15 @@
 
   // Elements d'un dia: rutines (blocs fixos) + tasques amb hora aquell dia.
   function dayItems(blocks, tasks, date = new Date(), now = new Date()) {
-    const items = blocksForDay(blocks, date).map(b => ({
-      kind: 'block', label: b.label, start: minutesOf(b.start_time), end: minutesOf(b.end_time), block: b,
-    }));
+    const items = [];
+    for (const b of blocksForDay(blocks, date)) {
+      const s = minutesOf(b.start_time), e = minutesOf(b.end_time), buf = bufferOf(b);
+      if (buf > 0) items.push({ kind: 'buffer', phase: 'before', label: `Preparar-se per a ${b.label}`,
+                                start: Math.max(0, s - buf), end: s, block: b });
+      items.push({ kind: 'block', label: b.label, start: s, end: e, block: b });
+      if (buf > 0) items.push({ kind: 'buffer', phase: 'after', label: `Tornar de ${b.label}`,
+                                start: e, end: Math.min(1440, e + buf), block: b });
+    }
     for (const t of tasks.filter(isActive)) {
       const when = t.start_at ? new Date(t.start_at) : t.due_at ? new Date(t.due_at) : null;
       if (!when || !sameDay(when, date)) continue;
@@ -133,7 +152,8 @@
     }
     const today = startOfDay(now).getTime(), d = startOfDay(date).getTime();
     const m = minutesNow(now);
-    return items.sort((a, b) => a.start - b.start || (a.kind === 'block' ? -1 : 1)).map(i => ({
+    const order = { buffer: 0, block: 1, task: 2 };
+    return items.sort((a, b) => a.start - b.start || order[a.kind] - order[b.kind]).map(i => ({
       ...i,
       state: d < today ? 'past' : d > today ? 'next'
         : i.start <= m && m < i.end ? 'now' : i.start < m ? 'past' : 'next',
@@ -141,13 +161,13 @@
   }
   function todayTimeline(blocks, tasks, now = new Date()) { return dayItems(blocks, tasks, now, now); }
 
-  // Temps que queda d'un element en curs: minuts i percentatge restant.
-  function remaining(item, now = new Date()) {
+  // Progrés d'un element en curs: percentatge fet i minuts que queden.
+  function progress(item, now = new Date()) {
     const m = minutesNow(now) + now.getSeconds() / 60;
     const total = item.end - item.start;
     if (total <= 0 || m < item.start || m >= item.end) return null;
-    const left = item.end - m;
-    return { leftMin: Math.ceil(left), pct: Math.round((left / total) * 100) };
+    const done = m - item.start;
+    return { pct: Math.floor((done / total) * 100), leftMin: Math.ceil(item.end - m) };
   }
 
   function durationText(min) {
@@ -202,7 +222,7 @@
     return d.map(x => DAY_NAMES[x - 1]).join(', ');
   }
 
-  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, remaining, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES,
+  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES,
     queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;

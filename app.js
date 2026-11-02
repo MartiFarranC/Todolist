@@ -163,18 +163,24 @@
 
   // ---------- Horari ----------
   function renderBusyLine() {
-    const b = Logic.currentBlock(state.blocks);
+    const cur = Logic.currentBlock(state.blocks);
     const line = $('#busy-line');
-    line.hidden = !b;
-    if (!b) return;
-    const item = { start: Logic.minutesOf(b.start_time), end: Logic.minutesOf(b.end_time) };
-    const r = Logic.remaining(item);
+    line.hidden = !cur;
+    if (!cur) return;
+    const b = cur.block;
+    const r = Logic.progress(cur);
+    const text = {
+      before: `Prepara't: ${b.label} comença a les ${Logic.hm(b.start_time)}`,
+      during: `Ara toca: ${b.label}, fins a les ${Logic.hm(b.end_time)}`,
+      after: `Tornant de ${b.label}, fins a les ${Logic.fmtMin(cur.end)}`,
+    }[cur.phase];
+    line.className = 'busy-line' + (cur.phase === 'during' ? '' : ' buffer');
     line.innerHTML = '';
     const l1 = el('div', 'line1');
-    l1.append(el('span', null, `Ara toca: ${b.label}, fins a les ${Logic.hm(b.end_time)}`));
-    if (r) l1.append(el('span', 'pct', `Queda ${r.pct}%`));
+    l1.append(el('span', null, text));
+    if (r) l1.append(el('span', 'pct', `Portes el ${r.pct}%`));
     line.append(l1);
-    if (r) line.append(bar(r.pct, `Queda el ${r.pct}% de ${b.label}`));
+    if (r) line.append(bar(r.pct, `Portes el ${r.pct}%`));
   }
 
   function bar(pct, label) {
@@ -255,15 +261,16 @@
       if (!markerDone && i.state !== 'past') {
         if (i.state === 'next') marker();
       }
-      const li = el('li', `${i.kind === 'block' ? 'routine-item' : 'task-item'} is-${i.state}`);
+      const kindClass = { block: 'routine-item', buffer: 'buffer-item', task: 'task-item' }[i.kind];
+      const li = el('li', `${kindClass} is-${i.state}`);
       const time = i.end > i.start ? `${Logic.fmtMin(i.start)} – ${Logic.fmtMin(i.end)}` : Logic.fmtMin(i.start);
       li.append(el('span', 'time', i.kind === 'task' && i.due ? 'Abans de les ' + Logic.fmtMin(i.start) : time));
       li.append(el('span', 'what', i.label));
       if (i.state === 'now') {
-        const r = Logic.remaining(i, now);
+        const r = Logic.progress(i, now);
         if (r) {
-          li.append(bar(r.pct, `Queda el ${r.pct}%`));
-          li.append(el('span', 'left', `Queda ${Logic.durationText(r.leftMin)} · ${r.pct}%`));
+          li.append(bar(r.pct, `Portes el ${r.pct}%`));
+          li.append(el('span', 'left', `Portes el ${r.pct}% · queden ${Logic.durationText(r.leftMin)}`));
         }
         if (!markerDone) markerDone = true;
       }
@@ -311,7 +318,8 @@
       col.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric' }));
       col.onclick = () => { sched.date = d; setView('day'); };
       for (const i of perDay[idx]) {
-        const ev = el('div', `ev ${i.kind === 'block' ? 'routine' : 'task'}${i.state === 'past' ? ' past' : ''}`, i.label);
+        const ev = el('div', `ev ${i.kind === 'block' ? 'routine' : i.kind}${i.state === 'past' ? ' past' : ''}`,
+          i.kind === 'buffer' ? '' : i.label);
         ev.style.top = (i.start - lo) * PX + 'px';
         ev.style.height = Math.max((i.end - i.start) * PX, 16) + 'px';
         ev.title = `${Logic.fmtMin(i.start)} ${i.label}`;
@@ -363,7 +371,8 @@
       const li = el('li');
       const txt = el('span', null, b.label);
       txt.append(el('span', 'sub',
-        `${Logic.daysText(b.days)} · ${Logic.hm(b.start_time)} – ${Logic.hm(b.end_time)}${b.busy === false ? ' · lliure' : ''}`));
+        `${Logic.daysText(b.days)} · ${Logic.hm(b.start_time)} – ${Logic.hm(b.end_time)}` +
+        (Logic.bufferOf(b) ? ` · marge ${Logic.bufferOf(b)} min` : '') + (b.busy === false ? ' · lliure' : '')));
       const del = el('button', 'link', 'Treure');
       del.onclick = () => deleteBlock(b);
       li.append(txt, del);
@@ -395,6 +404,7 @@
       start_time: f.get('start'),
       end_time: f.get('end'),
       busy: f.get('busy') === 'on',
+      buffer_min: Math.max(0, Math.min(180, parseInt(f.get('buffer'), 10) || 0)),
     };
     if (!block.label || !block.days.length) { toast('Posa-hi un nom i almenys un dia.'); return; }
     if (block.end_time <= block.start_time) { toast("L'hora final ha de ser després de l'inicial."); return; }
