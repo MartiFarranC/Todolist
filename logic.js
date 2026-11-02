@@ -119,23 +119,68 @@
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
 
-  // Línia del temps d'avui: blocs fixos + tasques amb hora avui.
-  function todayTimeline(blocks, tasks, now = new Date()) {
-    const items = blocksForDay(blocks, now).map(b => ({
+  // Elements d'un dia: rutines (blocs fixos) + tasques amb hora aquell dia.
+  function dayItems(blocks, tasks, date = new Date(), now = new Date()) {
+    const items = blocksForDay(blocks, date).map(b => ({
       kind: 'block', label: b.label, start: minutesOf(b.start_time), end: minutesOf(b.end_time), block: b,
     }));
     for (const t of tasks.filter(isActive)) {
       const when = t.start_at ? new Date(t.start_at) : t.due_at ? new Date(t.due_at) : null;
-      if (!when || !sameDay(when, now)) continue;
+      if (!when || !sameDay(when, date)) continue;
       const start = minutesNow(when);
       items.push({ kind: 'task', label: t.title, start, end: start + (t.estimate_min || 0),
                    due: !t.start_at, task: t });
     }
+    const today = startOfDay(now).getTime(), d = startOfDay(date).getTime();
     const m = minutesNow(now);
-    return items.sort((a, b) => a.start - b.start).map(i => ({
+    return items.sort((a, b) => a.start - b.start || (a.kind === 'block' ? -1 : 1)).map(i => ({
       ...i,
-      state: i.start <= m && m < i.end ? 'now' : i.start < m ? 'past' : 'next',
+      state: d < today ? 'past' : d > today ? 'next'
+        : i.start <= m && m < i.end ? 'now' : i.start < m ? 'past' : 'next',
     }));
+  }
+  function todayTimeline(blocks, tasks, now = new Date()) { return dayItems(blocks, tasks, now, now); }
+
+  // Temps que queda d'un element en curs: minuts i percentatge restant.
+  function remaining(item, now = new Date()) {
+    const m = minutesNow(now) + now.getSeconds() / 60;
+    const total = item.end - item.start;
+    if (total <= 0 || m < item.start || m >= item.end) return null;
+    const left = item.end - m;
+    return { leftMin: Math.ceil(left), pct: Math.round((left / total) * 100) };
+  }
+
+  function durationText(min) {
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60), r = min % 60;
+    return r ? `${h} h ${r} min` : `${h} h`;
+  }
+
+  function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+  function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  // Setmana de dilluns a diumenge que conté la data
+  function weekDays(date = new Date()) {
+    const mon = addDays(startOfDay(date), 1 - isoDay(date));
+    return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  }
+  // Graella del mes: setmanes completes de dilluns a diumenge
+  function monthGrid(date = new Date()) {
+    const first = new Date(date.getFullYear(), date.getMonth(), 1);
+    const start = addDays(first, 1 - isoDay(first));
+    const weeks = [];
+    let d = start;
+    do {
+      weeks.push(Array.from({ length: 7 }, (_, i) => addDays(d, i)));
+      d = addDays(d, 7);
+    } while (d.getMonth() === date.getMonth());
+    return weeks;
+  }
+  // Tasques amb data (inici o límit) en un dia concret
+  function tasksOnDay(tasks, date) {
+    return tasks.filter(isActive).filter(t => {
+      const w = t.start_at || t.due_at;
+      return w && sameDay(new Date(w), date);
+    });
   }
 
   // La propera tasca que encara no ha començat (start_at o ajornada en el futur).
@@ -157,7 +202,7 @@
     return d.map(x => DAY_NAMES[x - 1]).join(', ');
   }
 
-  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, nextUpcoming, fmtMin, daysText, DAY_NAMES,
+  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, remaining, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES,
     queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;

@@ -47,7 +47,7 @@
         </span>
       </header>
 
-      <p id="busy-line" class="busy-line" hidden></p>
+      <div id="busy-line" class="busy-line" hidden></div>
 
       <article id="now" class="card now" tabindex="-1">
         <!-- omplert per app.js -->
@@ -82,12 +82,30 @@
         <span class="brand small">Horari</span>
       </header>
 
-      <h2 class="section-title">Avui</h2>
-      <ol id="timeline" class="timeline"></ol>
+      <div class="segmented" role="tablist" aria-label="Vista">
+        <button role="tab" data-view="day" aria-selected="true">Dia</button>
+        <button role="tab" data-view="week" aria-selected="false">Setmana</button>
+        <button role="tab" data-view="month" aria-selected="false">Mes</button>
+      </div>
+
+      <div class="period-nav">
+        <button id="prev-period" class="chip icon" type="button" aria-label="Anterior">&lsaquo;</button>
+        <button id="period-title" class="period-title" type="button" title="Tornar a avui"></button>
+        <button id="next-period" class="chip icon" type="button" aria-label="Següent">&rsaquo;</button>
+      </div>
+
+      <div id="view-day"><ol id="timeline" class="timeline"></ol></div>
+      <div id="view-week" hidden><div id="week-grid" class="week-grid"></div></div>
+      <div id="view-month" hidden><div id="month-grid" class="month-grid"></div></div>
+
+      <p class="legend">
+        <span class="swatch routine"></span> Rutina
+        <span class="swatch task"></span> Tasca
+      </p>
 
       <details id="week" class="later">
-        <summary>Horari de la setmana</summary>
-        <p class="muted small-text">Durant els blocs ocupats, els avisos esperen fins que acabin.</p>
+        <summary>Rutines</summary>
+        <p class="muted small-text">Coses fixes de cada setmana. Durant les ocupades, els avisos esperen fins que acabin.</p>
         <ul id="block-list" class="blocks"></ul>
 
         <form id="block-form" class="card stack-tight">
@@ -101,7 +119,7 @@
             <label>A<input name="end" type="time" value="19:00" required></label>
           </div>
           <label class="check"><input name="busy" type="checkbox" checked> Ocupat (els avisos esperen)</label>
-          <button class="btn primary" type="submit">Afegir bloc</button>
+          <button class="btn primary" type="submit">Afegir rutina</button>
         </form>
       </details>
     </section>

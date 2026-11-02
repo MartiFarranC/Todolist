@@ -166,33 +166,197 @@
     const b = Logic.currentBlock(state.blocks);
     const line = $('#busy-line');
     line.hidden = !b;
-    if (b) line.textContent = `Ara toca: ${b.label}, fins a les ${Logic.hm(b.end_time)}. Els avisos esperen.`;
+    if (!b) return;
+    const item = { start: Logic.minutesOf(b.start_time), end: Logic.minutesOf(b.end_time) };
+    const r = Logic.remaining(item);
+    line.innerHTML = '';
+    const l1 = el('div', 'line1');
+    l1.append(el('span', null, `Ara toca: ${b.label}, fins a les ${Logic.hm(b.end_time)}`));
+    if (r) l1.append(el('span', 'pct', `Queda ${r.pct}%`));
+    line.append(l1);
+    if (r) line.append(bar(r.pct, `Queda el ${r.pct}% de ${b.label}`));
+  }
+
+  function bar(pct, label) {
+    const outer = el('div', 'bar');
+    outer.setAttribute('role', 'progressbar');
+    outer.setAttribute('aria-valuemin', '0');
+    outer.setAttribute('aria-valuemax', '100');
+    outer.setAttribute('aria-valuenow', String(pct));
+    outer.setAttribute('aria-label', label);
+    const inner = el('span');
+    inner.style.width = pct + '%';
+    outer.append(inner);
+    return outer;
+  }
+
+  const sched = { view: readPref('view') || 'day', date: new Date() };
+
+  function setView(v) {
+    sched.view = v;
+    writePref('view', v);
+    renderSchedule();
+  }
+
+  function shiftPeriod(dir) {
+    const d = new Date(sched.date);
+    if (sched.view === 'day') d.setDate(d.getDate() + dir);
+    else if (sched.view === 'week') d.setDate(d.getDate() + 7 * dir);
+    else { d.setDate(1); d.setMonth(d.getMonth() + dir); }
+    sched.date = d;
+    renderSchedule();
+  }
+
+  function periodTitle() {
+    const d = sched.date, today = new Date();
+    if (sched.view === 'day') {
+      if (Logic.sameDay(d, today)) return 'Avui';
+      if (Logic.sameDay(d, Logic.addDays(today, 1))) return 'Demà';
+      if (Logic.sameDay(d, Logic.addDays(today, -1))) return 'Ahir';
+      return d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    if (sched.view === 'week') {
+      const w = Logic.weekDays(d);
+      if (w.some(x => Logic.sameDay(x, today))) return 'Aquesta setmana';
+      const f = x => x.toLocaleDateString('ca', { day: 'numeric', month: 'short' });
+      return `${f(w[0])} – ${f(w[6])}`;
+    }
+    return d.toLocaleDateString('ca', { month: 'long', year: 'numeric' });
   }
 
   function renderSchedule() {
+    for (const t of document.querySelectorAll('.segmented [role=tab]')) {
+      t.setAttribute('aria-selected', String(t.dataset.view === sched.view));
+    }
+    $('#view-day').hidden = sched.view !== 'day';
+    $('#view-week').hidden = sched.view !== 'week';
+    $('#view-month').hidden = sched.view !== 'month';
+    $('.legend').hidden = sched.view === 'month';
+    const title = periodTitle();
+    $('#period-title').textContent = title.charAt(0).toUpperCase() + title.slice(1);
+    if (sched.view === 'day') renderDay();
+    else if (sched.view === 'week') renderWeek();
+    else renderMonth();
+    renderRoutines();
+  }
+
+  function renderDay() {
     const tl = $('#timeline');
     tl.innerHTML = '';
-    const items = Logic.todayTimeline(state.blocks, state.tasks);
-    let markerDone = false;
-    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const now = new Date();
+    const isToday = Logic.sameDay(sched.date, now);
+    const items = Logic.dayItems(state.blocks, state.tasks, sched.date, now);
+    let markerDone = !isToday;
     const marker = () => {
-      const li = el('li', 'marker', 'Ara · ' + Logic.fmtMin(nowMin));
-      tl.append(li);
+      tl.append(el('li', 'marker', 'Ara · ' + Logic.fmtMin(now.getHours() * 60 + now.getMinutes())));
       markerDone = true;
     };
     for (const i of items) {
-      if (!markerDone && i.state === 'next') marker();
-      const li = el('li', 'is-' + i.state);
-      const time = i.kind === 'block' || i.end > i.start
-        ? `${Logic.fmtMin(i.start)} – ${Logic.fmtMin(i.end)}` : Logic.fmtMin(i.start);
+      if (!markerDone && i.state !== 'past') {
+        if (i.state === 'next') marker();
+      }
+      const li = el('li', `${i.kind === 'block' ? 'routine-item' : 'task-item'} is-${i.state}`);
+      const time = i.end > i.start ? `${Logic.fmtMin(i.start)} – ${Logic.fmtMin(i.end)}` : Logic.fmtMin(i.start);
       li.append(el('span', 'time', i.kind === 'task' && i.due ? 'Abans de les ' + Logic.fmtMin(i.start) : time));
       li.append(el('span', 'what', i.label));
-      if (i.kind === 'task') li.append(el('span', 'kind', 'tasca'));
+      if (i.state === 'now') {
+        const r = Logic.remaining(i, now);
+        if (r) {
+          li.append(bar(r.pct, `Queda el ${r.pct}%`));
+          li.append(el('span', 'left', `Queda ${Logic.durationText(r.leftMin)} · ${r.pct}%`));
+        }
+        if (!markerDone) markerDone = true;
+      }
       tl.append(li);
     }
     if (!markerDone) marker();
-    if (!items.length) tl.append(el('li', 'muted', 'Avui no tens res fix. Dia lliure.'));
+    if (!items.length) tl.append(el('li', 'empty', 'Res fix aquest dia. Dia lliure.'));
+  }
 
+  function renderWeek() {
+    const grid = $('#week-grid');
+    grid.innerHTML = '';
+    const now = new Date();
+    const days = Logic.weekDays(sched.date);
+    const perDay = days.map(d => Logic.dayItems(state.blocks, state.tasks, d, now));
+    // Franja visible: de la primera a l'última cosa, com a mínim 8:00 – 21:00
+    let lo = 8 * 60, hi = 21 * 60;
+    for (const items of perDay) for (const i of items) { lo = Math.min(lo, i.start); hi = Math.max(hi, i.end, i.start + 30); }
+    lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
+    const PX = 30 / 60; // 30 px per hora
+    const height = (hi - lo) * PX;
+
+    grid.append(el('div'));
+    days.forEach(d => {
+      const h = el('div', 'head' + (Logic.sameDay(d, now) ? ' today' : ''));
+      h.append(document.createTextNode(Logic.DAY_NAMES[Logic.isoDay(d) - 1]));
+      h.append(el('b', null, String(d.getDate())));
+      grid.append(h);
+    });
+
+    const axis = el('div', 'axis');
+    axis.style.height = height + 'px';
+    for (let m = lo; m <= hi; m += 120) {
+      const s = el('span', null, String(m / 60));
+      s.style.top = (m - lo) * PX + 'px';
+      axis.append(s);
+    }
+    grid.append(axis);
+
+    days.forEach((d, idx) => {
+      const col = el('div', 'col' + (Logic.sameDay(d, now) ? ' today' : ''));
+      col.style.height = height + 'px';
+      col.setAttribute('role', 'button');
+      col.tabIndex = 0;
+      col.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric' }));
+      col.onclick = () => { sched.date = d; setView('day'); };
+      for (const i of perDay[idx]) {
+        const ev = el('div', `ev ${i.kind === 'block' ? 'routine' : 'task'}${i.state === 'past' ? ' past' : ''}`, i.label);
+        ev.style.top = (i.start - lo) * PX + 'px';
+        ev.style.height = Math.max((i.end - i.start) * PX, 16) + 'px';
+        ev.title = `${Logic.fmtMin(i.start)} ${i.label}`;
+        col.append(ev);
+      }
+      if (Logic.sameDay(d, now)) {
+        const m = now.getHours() * 60 + now.getMinutes();
+        if (m >= lo && m <= hi) {
+          const nl = el('div', 'nowline');
+          nl.style.top = (m - lo) * PX + 'px';
+          col.append(nl);
+        }
+      }
+      grid.append(col);
+    });
+  }
+
+  function renderMonth() {
+    const grid = $('#month-grid');
+    grid.innerHTML = '';
+    const now = new Date();
+    for (const n of Logic.DAY_NAMES) grid.append(el('div', 'dow', n));
+    for (const week of Logic.monthGrid(sched.date)) {
+      for (const d of week) {
+        const past = Logic.startOfDay(d) < Logic.startOfDay(now);
+        const cls = ['day'];
+        if (d.getMonth() !== sched.date.getMonth()) cls.push('out');
+        if (Logic.sameDay(d, now)) cls.push('today');
+        if (past) cls.push('past');
+        const b = el('button', cls.join(' '));
+        b.type = 'button';
+        b.append(el('span', null, String(d.getDate())));
+        const dots = el('span', 'dots');
+        for (const _t of Logic.tasksOnDay(state.tasks, d).slice(0, 3)) dots.append(el('span', 'dot'));
+        b.append(dots);
+        const nTasks = Logic.tasksOnDay(state.tasks, d).length;
+        b.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long' }) +
+          (nTasks ? `, ${nTasks} ${nTasks === 1 ? 'tasca' : 'tasques'}` : ''));
+        b.onclick = () => { sched.date = d; setView('day'); };
+        grid.append(b);
+      }
+    }
+  }
+
+  function renderRoutines() {
     const list = $('#block-list');
     list.innerHTML = '';
     for (const b of state.blocks) {
@@ -205,7 +369,7 @@
       li.append(txt, del);
       list.append(li);
     }
-    if (!state.blocks.length) list.append(el('li', 'muted', 'Encara no hi ha cap bloc.'));
+    if (!state.blocks.length) list.append(el('li', 'muted', 'Encara no hi ha cap rutina.'));
   }
 
   const pickedDays = new Set([1, 2, 3, 4, 5]);
@@ -240,7 +404,7 @@
     state.blocks.sort((a, b) => Logic.minutesOf(a.start_time) - Logic.minutesOf(b.start_time));
     e.target.reset();
     render();
-    toast('Bloc afegit.');
+    toast('Rutina afegida.');
   }
 
   async function deleteBlock(b) {
@@ -248,7 +412,7 @@
     render();
     const { error } = await sb.from('schedule_blocks').delete().eq('id', b.id);
     if (error) { state.blocks.push(b); render(); toast("No s'ha pogut treure."); return; }
-    toast('Bloc tret.', { label: 'Desfer', run: async () => {
+    toast('Rutina treta.', { label: 'Desfer', run: async () => {
       const { id, created_at, ...rest } = b;
       const r = await sb.from('schedule_blocks').insert(rest).select().single();
       if (!r.error) { state.blocks.push(r.data); render(); }
@@ -333,7 +497,11 @@
     all.hidden = !all.hidden;
     $('#show-all').textContent = all.hidden ? 'Veure-ho tot' : 'Amagar';
   };
-  $('#open-schedule').onclick = () => { show('schedule'); renderSchedule(); window.scrollTo(0, 0); };
+  $('#open-schedule').onclick = () => { sched.date = new Date(); show('schedule'); renderSchedule(); window.scrollTo(0, 0); };
+  for (const t of document.querySelectorAll('.segmented [role=tab]')) t.onclick = () => setView(t.dataset.view);
+  $('#prev-period').onclick = () => shiftPeriod(-1);
+  $('#next-period').onclick = () => shiftPeriod(1);
+  $('#period-title').onclick = () => { sched.date = new Date(); renderSchedule(); };
   $('#close-schedule').onclick = () => { show('home'); };
   $('#block-form').addEventListener('submit', addBlock);
   renderDayPicker();
@@ -377,7 +545,8 @@
     if (signedIn && document.visibilityState === 'visible') load();
   });
   // Refrescar cada 5 min perquè les tasques ajornades tornin soles
-  setInterval(render, 60e3);
+  // Cada 30 s: tasques ajornades que tornen i percentatges de temps que queden
+  setInterval(render, 30e3);
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
