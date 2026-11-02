@@ -39,6 +39,12 @@ rpc claude_delete_task "{\"key\":\"$TODO_CLAUDE_KEY\",\"id\":\"<id>\"}"
 rpc claude_config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
 ```
 
+## Horari del Martí
+- Feina: de dilluns a divendres, 9:00 a 13:00.
+- Gimnàs: de dilluns a divendres, 16:30 a 17:30.
+- Durant aquestes hores els avisos normals i importants esperen (camp `busy` de la configuració, canviable amb `claude_config`).
+  No programis tasques en aquestes franges: fes servir `start_at` per fer-les aparèixer després.
+
 ## Com prioritzar
 1. Primer el que té data límit propera o conseqüències si no es fa (importance 3).
 2. Barreja tasques fàcils (energy low) entre les difícils per mantenir l'impuls.

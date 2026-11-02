@@ -27,9 +27,15 @@ create table if not exists private.config (
   quiet_start     time not null default '22:00',
   quiet_end       time not null default '08:00',
   daily_limit     int  not null default 6,
-  digest_time     time not null default '09:00',
+  digest_time     time not null default '08:30',
   last_digest_on  date
 );
+
+-- Hores ocupades (feina, gimnàs...): els avisos normals i importants esperen.
+-- days: 1 = dilluns ... 7 = diumenge
+alter table private.config add column if not exists busy jsonb not null default
+  '[{"label":"Feina","days":[1,2,3,4,5],"start":"09:00","end":"13:00"},
+    {"label":"Gimnàs","days":[1,2,3,4,5],"start":"16:30","end":"17:30"}]';
 
 insert into private.config (owner_email)
 values ('martifarranc@gmail.com')               -- <<< el teu correu d'inici de sessió
@@ -247,7 +253,8 @@ begin
     daily_limit = coalesce((changes->>'daily_limit')::int, daily_limit),
     digest_time = coalesce((changes->>'digest_time')::time, digest_time),
     timezone    = coalesce(changes->>'timezone', timezone),
-    app_url     = coalesce(changes->>'app_url', app_url)
+    app_url     = coalesce(changes->>'app_url', app_url),
+    busy        = coalesce(changes->'busy', busy)
   returning * into c;
   return to_jsonb(c) - 'claude_key';
 end $$;
@@ -291,6 +298,17 @@ language sql stable as $$
   end
 $$;
 
+create or replace function private.in_busy_hours(c private.config) returns boolean
+language sql stable as $$
+  select exists (
+    select 1 from jsonb_array_elements(c.busy) b
+    where extract(isodow from now() at time zone c.timezone)::int
+            in (select jsonb_array_elements_text(b->'days')::int)
+      and (now() at time zone c.timezone)::time >= (b->>'start')::time
+      and (now() at time zone c.timezone)::time <  (b->>'end')::time
+  )
+$$;
+
 create or replace function private.send_due_reminders() returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -302,7 +320,7 @@ declare
   top record;
 begin
   select * into c from private.config;
-  quiet := private.in_quiet_hours(c);
+  quiet := private.in_quiet_hours(c) or private.in_busy_hours(c);
   local_today := (now() at time zone c.timezone)::date;
   select count(*) into sent_today from public.reminders
    where sent_at is not null and (sent_at at time zone c.timezone)::date = local_today;
@@ -325,7 +343,7 @@ begin
       update public.reminders set sent_at = now(), message = coalesce(message,'') || ' [caducat]' where id = r.id;
       continue;
     end if;
-    -- Hores de silenci i límit diari (excepte urgents): esperar
+    -- Hores de silenci, hores ocupades i límit diari (excepte urgents): esperar
     if r.level <> 'urgent' and (quiet or sent_today >= c.daily_limit) then
       continue;
     end if;
