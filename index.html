@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ca">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ara</title>
+  <meta name="description" content="Una tasca, la que toca ara.">
+  <meta name="theme-color" content="#f6f1e9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1d1f1c" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ara">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app" aria-live="polite">
+    <!-- Inici de sessió -->
+    <section id="login" class="view" hidden>
+      <h1 class="brand">Ara</h1>
+      <p class="muted">Una tasca, la que toca ara.</p>
+      <form id="login-form" class="stack">
+        <label>Correu<input type="email" name="email" autocomplete="username" required></label>
+        <label>Contrasenya<input type="password" name="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit">Entrar</button>
+        <p id="login-error" class="note" role="alert"></p>
+      </form>
+    </section>
+
+    <!-- Configuració pendent -->
+    <section id="setup" class="view" hidden>
+      <h1 class="brand">Ara</h1>
+      <p>Falta connectar Supabase. Omple <code>config.js</code> amb l'URL i la anon key.</p>
+    </section>
+
+    <!-- Pantalla principal -->
+    <section id="home" class="view" hidden>
+      <header class="top">
+        <span class="brand small">Ara</span>
+        <button id="energy-toggle" class="chip" type="button" aria-pressed="false">Poca energia</button>
+      </header>
+
+      <article id="now" class="card now" tabindex="-1">
+        <!-- omplert per app.js -->
+      </article>
+
+      <div id="split" class="card split" hidden>
+        <label for="split-input">Passos més petits, un per línia</label>
+        <textarea id="split-input" rows="4" placeholder="Obrir el document&#10;Escriure el títol"></textarea>
+        <div class="row">
+          <button id="split-save" class="btn primary" type="button">Guardar passos</button>
+          <button id="split-cancel" class="btn ghost" type="button">Cancel·lar</button>
+        </div>
+      </div>
+
+      <details id="later" class="later">
+        <summary>Després</summary>
+        <ol id="later-list" class="list"></ol>
+        <button id="show-all" class="btn ghost small" type="button">Veure-ho tot</button>
+        <ul id="all-list" class="list" hidden></ul>
+      </details>
+
+      <form id="capture" class="capture" autocomplete="off">
+        <label class="sr-only" for="capture-input">Apunta una cosa</label>
+        <input id="capture-input" type="text" placeholder="Apunta una cosa i prem Enter" enterkeyhint="done" maxlength="300">
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
