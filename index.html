@@ -41,8 +41,13 @@
     <section id="home" class="view" hidden>
       <header class="top">
         <span class="brand small">Ara</span>
-        <button id="energy-toggle" class="chip" type="button" aria-pressed="false">Poca energia</button>
+        <span class="row">
+          <button id="open-schedule" class="chip" type="button">Horari</button>
+          <button id="energy-toggle" class="chip" type="button" aria-pressed="false">Poca energia</button>
+        </span>
       </header>
+
+      <p id="busy-line" class="busy-line" hidden></p>
 
       <article id="now" class="card now" tabindex="-1">
         <!-- omplert per app.js -->
@@ -68,6 +73,37 @@
         <label class="sr-only" for="capture-input">Apunta una cosa</label>
         <input id="capture-input" type="text" placeholder="Apunta una cosa i prem Enter" enterkeyhint="done" maxlength="300">
       </form>
+    </section>
+
+    <!-- Horari -->
+    <section id="schedule" class="view" hidden>
+      <header class="top">
+        <button id="close-schedule" class="chip" type="button">&larr; Tornar</button>
+        <span class="brand small">Horari</span>
+      </header>
+
+      <h2 class="section-title">Avui</h2>
+      <ol id="timeline" class="timeline"></ol>
+
+      <details id="week" class="later">
+        <summary>Horari de la setmana</summary>
+        <p class="muted small-text">Durant els blocs ocupats, els avisos esperen fins que acabin.</p>
+        <ul id="block-list" class="blocks"></ul>
+
+        <form id="block-form" class="card stack-tight">
+          <label>Nom<input name="label" type="text" maxlength="60" placeholder="Classe d'anglès" required></label>
+          <fieldset class="days">
+            <legend>Dies</legend>
+            <div id="day-picker" class="row"></div>
+          </fieldset>
+          <div class="row times">
+            <label>De<input name="start" type="time" value="18:00" required></label>
+            <label>A<input name="end" type="time" value="19:00" required></label>
+          </div>
+          <label class="check"><input name="busy" type="checkbox" checked> Ocupat (els avisos esperen)</label>
+          <button class="btn primary" type="submit">Afegir bloc</button>
+        </form>
+      </details>
     </section>
   </main>
 

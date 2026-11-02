@@ -96,7 +96,69 @@
       }));
   }
 
-  const api = { queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
+  // ---------- Horari ----------
+  // Dia ISO: 1 = dilluns ... 7 = diumenge
+  function isoDay(d) { return ((d.getDay() + 6) % 7) + 1; }
+  function hm(t) { return String(t).slice(0, 5); }
+  function minutesOf(t) { const [h, m] = hm(t).split(':').map(Number); return h * 60 + m; }
+  function minutesNow(d) { return d.getHours() * 60 + d.getMinutes(); }
+
+  function blocksForDay(blocks, date = new Date()) {
+    const day = isoDay(date);
+    return blocks.filter(b => (b.days || []).includes(day))
+      .sort((a, b) => minutesOf(a.start_time) - minutesOf(b.start_time));
+  }
+
+  function currentBlock(blocks, now = new Date()) {
+    const m = minutesNow(now);
+    return blocksForDay(blocks, now)
+      .find(b => b.busy !== false && minutesOf(b.start_time) <= m && m < minutesOf(b.end_time)) || null;
+  }
+
+  function sameDay(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  // Línia del temps d'avui: blocs fixos + tasques amb hora avui.
+  function todayTimeline(blocks, tasks, now = new Date()) {
+    const items = blocksForDay(blocks, now).map(b => ({
+      kind: 'block', label: b.label, start: minutesOf(b.start_time), end: minutesOf(b.end_time), block: b,
+    }));
+    for (const t of tasks.filter(isActive)) {
+      const when = t.start_at ? new Date(t.start_at) : t.due_at ? new Date(t.due_at) : null;
+      if (!when || !sameDay(when, now)) continue;
+      const start = minutesNow(when);
+      items.push({ kind: 'task', label: t.title, start, end: start + (t.estimate_min || 0),
+                   due: !t.start_at, task: t });
+    }
+    const m = minutesNow(now);
+    return items.sort((a, b) => a.start - b.start).map(i => ({
+      ...i,
+      state: i.start <= m && m < i.end ? 'now' : i.start < m ? 'past' : 'next',
+    }));
+  }
+
+  // La propera tasca que encara no ha començat (start_at o ajornada en el futur).
+  function nextUpcoming(tasks, now = new Date()) {
+    const n = now.getTime();
+    const when = t => Math.max(t.start_at ? Date.parse(t.start_at) : 0, t.snoozed_until ? Date.parse(t.snoozed_until) : 0);
+    return tasks.filter(isActive).filter(t => when(t) > n).sort((a, b) => when(a) - when(b))
+      .map(t => ({ task: t, at: new Date(when(t)) }))[0] || null;
+  }
+
+  function fmtMin(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+
+  const DAY_NAMES = ['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'];
+  function daysText(days) {
+    const d = [...days].sort((a, b) => a - b);
+    if (d.join() === '1,2,3,4,5') return 'De dilluns a divendres';
+    if (d.join() === '1,2,3,4,5,6,7') return 'Cada dia';
+    if (d.join() === '6,7') return 'Cap de setmana';
+    return d.map(x => DAY_NAMES[x - 1]).join(', ');
+  }
+
+  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, nextUpcoming, fmtMin, daysText, DAY_NAMES,
+    queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;
 })(this);

@@ -141,6 +141,44 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
 }
 .toast .link { color: var(--bg); }
 
+/* ---------- Horari ---------- */
+.busy-line {
+  margin: -8px 0 12px; padding: 10px 14px; border-radius: 12px;
+  background: var(--accent-soft); font-size: .95rem;
+}
+.section-title { font-size: 1.3rem; margin: 4px 0 12px; }
+.timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
+.timeline li { position: relative; padding: 10px 0 10px 18px; }
+.timeline li::before {
+  content: ''; position: absolute; left: -7px; top: 17px;
+  width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line);
+}
+.timeline .time { display: block; font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.timeline .is-past { opacity: .5; }
+.timeline .is-now::before { background: var(--accent); border-color: var(--accent); }
+.timeline .is-now .what { font-weight: 700; }
+.timeline .kind { font-size: .8rem; color: var(--muted); margin-left: 6px; }
+.timeline .marker { padding: 4px 0 4px 18px; font-size: .85rem; color: var(--accent); font-weight: 700; }
+.timeline .marker::before { background: var(--accent); border-color: var(--accent); width: 8px; height: 8px; left: -5px; top: 10px; }
+.small-text { font-size: .9rem; margin: 4px 0 8px; }
+.blocks { list-style: none; padding: 0; margin: 0 0 16px; }
+.blocks li {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--text);
+}
+.blocks .sub { display: block; font-size: .85rem; color: var(--muted); }
+.stack-tight { display: grid; gap: 12px; padding: 18px; }
+.stack-tight label { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); }
+.days { border: 0; padding: 0; margin: 0; }
+.days legend { font-size: .9rem; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.days .chip { min-width: 44px; padding: 6px 8px; }
+.times label { flex: 1; }
+.check { display: flex !important; flex-direction: row; align-items: center; gap: 8px; }
+input[type="time"] {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%;
+}
+
 /* Una petita recompensa en marcar Fet */
 @keyframes settle {
   0% { transform: scale(1); }

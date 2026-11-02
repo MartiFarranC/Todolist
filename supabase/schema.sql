@@ -31,12 +31,6 @@ create table if not exists private.config (
   last_digest_on  date
 );
 
--- Hores ocupades (feina, gimnàs...): els avisos normals i importants esperen.
--- days: 1 = dilluns ... 7 = diumenge
-alter table private.config add column if not exists busy jsonb not null default
-  '[{"label":"Feina","days":[1,2,3,4,5],"start":"09:00","end":"13:00"},
-    {"label":"Gimnàs","days":[1,2,3,4,5],"start":"16:30","end":"17:30"}]';
-
 insert into private.config (owner_email)
 values ('martifarranc@gmail.com')               -- <<< el teu correu d'inici de sessió
 on conflict (id) do nothing;
@@ -83,6 +77,28 @@ create table if not exists public.reminders (
 );
 create index if not exists reminders_pending on public.reminders (remind_at) where sent_at is null;
 
+-- ---------------------------------------------------------------------
+-- Horari: blocs fixos de la setmana (feina, gimnàs...).
+-- Durant un bloc ocupat, els avisos normals i importants esperen.
+-- days: 1 = dilluns ... 7 = diumenge
+-- ---------------------------------------------------------------------
+create table if not exists public.schedule_blocks (
+  id         uuid primary key default gen_random_uuid(),
+  label      text not null check (length(label) between 1 and 60),
+  days       int[] not null check (days <@ array[1,2,3,4,5,6,7] and cardinality(days) > 0),
+  start_time time not null,
+  end_time   time not null check (end_time > start_time),
+  busy       boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.schedule_blocks (label, days, start_time, end_time)
+select * from (values
+  ('Feina',  array[1,2,3,4,5], '09:00'::time, '13:00'::time),
+  ('Gimnàs', array[1,2,3,4,5], '16:30'::time, '17:30'::time)
+) v
+where not exists (select 1 from public.schedule_blocks);
+
 create or replace function private.max_three_reminders() returns trigger
 language plpgsql as $$
 begin
@@ -126,8 +142,12 @@ revoke all on all functions in schema private from public, anon, authenticated;
 grant usage on schema private to authenticated;
 grant execute on function private.is_owner() to authenticated;
 
-grant select, insert, update, delete on public.tasks, public.reminders to authenticated;
-revoke all on public.tasks, public.reminders from anon;
+grant select, insert, update, delete on public.tasks, public.reminders, public.schedule_blocks to authenticated;
+revoke all on public.tasks, public.reminders, public.schedule_blocks from anon;
+alter table public.schedule_blocks enable row level security;
+drop policy if exists owner_all on public.schedule_blocks;
+create policy owner_all on public.schedule_blocks
+  for all to authenticated using (private.is_owner()) with check (private.is_owner());
 
 alter table public.tasks     enable row level security;
 alter table public.reminders enable row level security;
@@ -143,6 +163,9 @@ create policy owner_all on public.reminders
 -- Temps real, perquè l'app s'actualitzi quan Claude canvia coses
 do $$ begin
   alter publication supabase_realtime add table public.tasks;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.schedule_blocks;
 exception when duplicate_object then null; end $$;
 
 -- ---------------------------------------------------------------------
@@ -253,11 +276,30 @@ begin
     daily_limit = coalesce((changes->>'daily_limit')::int, daily_limit),
     digest_time = coalesce((changes->>'digest_time')::time, digest_time),
     timezone    = coalesce(changes->>'timezone', timezone),
-    app_url     = coalesce(changes->>'app_url', app_url),
-    busy        = coalesce(changes->'busy', busy)
+    app_url     = coalesce(changes->>'app_url', app_url)
   returning * into c;
   return to_jsonb(c) - 'claude_key';
 end $$;
+
+-- Horari: blocks = null només llegeix; un array substitueix tot l'horari.
+-- [{"label":"Feina","days":[1,2,3,4,5],"start_time":"09:00","end_time":"13:00","busy":true}]
+create or replace function public.claude_schedule(key text, blocks jsonb default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.check_key(key);
+  if blocks is not null then
+    delete from public.schedule_blocks where true;
+    insert into public.schedule_blocks (label, days, start_time, end_time, busy)
+    select x->>'label',
+           array(select jsonb_array_elements_text(x->'days')::int),
+           (x->>'start_time')::time, (x->>'end_time')::time,
+           coalesce((x->>'busy')::boolean, true)
+    from jsonb_array_elements(blocks) x;
+  end if;
+  return coalesce((select jsonb_agg(to_jsonb(b) order by b.start_time) from public.schedule_blocks b), '[]');
+end $$;
+revoke all on function public.claude_schedule(text, jsonb) from public;
+grant execute on function public.claude_schedule(text, jsonb) to anon, authenticated;
 
 revoke all on function public.claude_list(text, boolean)              from public;
 revoke all on function public.claude_upsert_task(text, jsonb)         from public;
@@ -301,11 +343,11 @@ $$;
 create or replace function private.in_busy_hours(c private.config) returns boolean
 language sql stable as $$
   select exists (
-    select 1 from jsonb_array_elements(c.busy) b
-    where extract(isodow from now() at time zone c.timezone)::int
-            in (select jsonb_array_elements_text(b->'days')::int)
-      and (now() at time zone c.timezone)::time >= (b->>'start')::time
-      and (now() at time zone c.timezone)::time <  (b->>'end')::time
+    select 1 from public.schedule_blocks b
+    where b.busy
+      and extract(isodow from now() at time zone c.timezone)::int = any (b.days)
+      and (now() at time zone c.timezone)::time >= b.start_time
+      and (now() at time zone c.timezone)::time <  b.end_time
   )
 $$;
 

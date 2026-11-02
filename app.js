@@ -7,6 +7,7 @@
 
   const state = {
     tasks: [],
+    blocks: [],
     lowEnergy: readPref('lowEnergy') === '1',
     current: null,
   };
@@ -53,6 +54,8 @@
       .order('created_at', { ascending: true });
     if (error) { toast('No he pogut carregar les tasques.'); return; }
     state.tasks = data;
+    const b = await sb.from('schedule_blocks').select('*').order('start_time', { ascending: true });
+    if (!b.error) state.blocks = b.data;
     render();
   }
 
@@ -77,6 +80,8 @@
     state.current = now;
     renderNow(now);
     renderLater(now);
+    renderBusyLine();
+    if (!$('#schedule').hidden) renderSchedule();
     const et = $('#energy-toggle');
     et.setAttribute('aria-pressed', String(state.lowEnergy));
   }
@@ -93,8 +98,17 @@
     box.innerHTML = '';
     if (!t) {
       box.append(el('p', 'eyebrow', 'Ara'));
-      box.append(el('h2', 'title', 'Res pendent.'));
-      box.append(el('p', 'muted', 'Gaudeix-ho. Si et ve alguna cosa al cap, apunta-la a baix.'));
+      const up = Logic.nextUpcoming(state.tasks);
+      if (up) {
+        const sameDay = up.at.toDateString() === new Date().toDateString();
+        const when = (sameDay ? 'avui' : up.at.toLocaleDateString('ca', { weekday: 'long' })) +
+          ' a les ' + up.at.toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' });
+        box.append(el('h2', 'title', 'Ara no toca res.'));
+        box.append(el('p', 'muted', `La següent: ${up.task.title}, ${when}.`));
+      } else {
+        box.append(el('h2', 'title', 'Res pendent.'));
+        box.append(el('p', 'muted', 'Gaudeix-ho. Si et ve alguna cosa al cap, apunta-la a baix.'));
+      }
       return;
     }
     box.append(el('p', 'eyebrow', t.parent_id ? 'Ara · un pas' : 'Ara'));
@@ -145,6 +159,100 @@
       all.append(li);
     }
     $('#show-all').hidden = rest.length === 0;
+  }
+
+  // ---------- Horari ----------
+  function renderBusyLine() {
+    const b = Logic.currentBlock(state.blocks);
+    const line = $('#busy-line');
+    line.hidden = !b;
+    if (b) line.textContent = `Ara toca: ${b.label}, fins a les ${Logic.hm(b.end_time)}. Els avisos esperen.`;
+  }
+
+  function renderSchedule() {
+    const tl = $('#timeline');
+    tl.innerHTML = '';
+    const items = Logic.todayTimeline(state.blocks, state.tasks);
+    let markerDone = false;
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const marker = () => {
+      const li = el('li', 'marker', 'Ara · ' + Logic.fmtMin(nowMin));
+      tl.append(li);
+      markerDone = true;
+    };
+    for (const i of items) {
+      if (!markerDone && i.state === 'next') marker();
+      const li = el('li', 'is-' + i.state);
+      const time = i.kind === 'block' || i.end > i.start
+        ? `${Logic.fmtMin(i.start)} – ${Logic.fmtMin(i.end)}` : Logic.fmtMin(i.start);
+      li.append(el('span', 'time', i.kind === 'task' && i.due ? 'Abans de les ' + Logic.fmtMin(i.start) : time));
+      li.append(el('span', 'what', i.label));
+      if (i.kind === 'task') li.append(el('span', 'kind', 'tasca'));
+      tl.append(li);
+    }
+    if (!markerDone) marker();
+    if (!items.length) tl.append(el('li', 'muted', 'Avui no tens res fix. Dia lliure.'));
+
+    const list = $('#block-list');
+    list.innerHTML = '';
+    for (const b of state.blocks) {
+      const li = el('li');
+      const txt = el('span', null, b.label);
+      txt.append(el('span', 'sub',
+        `${Logic.daysText(b.days)} · ${Logic.hm(b.start_time)} – ${Logic.hm(b.end_time)}${b.busy === false ? ' · lliure' : ''}`));
+      const del = el('button', 'link', 'Treure');
+      del.onclick = () => deleteBlock(b);
+      li.append(txt, del);
+      list.append(li);
+    }
+    if (!state.blocks.length) list.append(el('li', 'muted', 'Encara no hi ha cap bloc.'));
+  }
+
+  const pickedDays = new Set([1, 2, 3, 4, 5]);
+  function renderDayPicker() {
+    const box = $('#day-picker');
+    box.innerHTML = '';
+    Logic.DAY_NAMES.forEach((name, idx) => {
+      const d = idx + 1;
+      const b = el('button', 'chip', name);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(pickedDays.has(d)));
+      b.onclick = () => { pickedDays.has(d) ? pickedDays.delete(d) : pickedDays.add(d); renderDayPicker(); };
+      box.append(b);
+    });
+  }
+
+  async function addBlock(e) {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const block = {
+      label: String(f.get('label')).trim(),
+      days: [...pickedDays].sort(),
+      start_time: f.get('start'),
+      end_time: f.get('end'),
+      busy: f.get('busy') === 'on',
+    };
+    if (!block.label || !block.days.length) { toast('Posa-hi un nom i almenys un dia.'); return; }
+    if (block.end_time <= block.start_time) { toast("L'hora final ha de ser després de l'inicial."); return; }
+    const { data, error } = await sb.from('schedule_blocks').insert(block).select().single();
+    if (error) { toast("No s'ha pogut desar el bloc."); return; }
+    state.blocks.push(data);
+    state.blocks.sort((a, b) => Logic.minutesOf(a.start_time) - Logic.minutesOf(b.start_time));
+    e.target.reset();
+    render();
+    toast('Bloc afegit.');
+  }
+
+  async function deleteBlock(b) {
+    state.blocks = state.blocks.filter(x => x.id !== b.id);
+    render();
+    const { error } = await sb.from('schedule_blocks').delete().eq('id', b.id);
+    if (error) { state.blocks.push(b); render(); toast("No s'ha pogut treure."); return; }
+    toast('Bloc tret.', { label: 'Desfer', run: async () => {
+      const { id, created_at, ...rest } = b;
+      const r = await sb.from('schedule_blocks').insert(rest).select().single();
+      if (!r.error) { state.blocks.push(r.data); render(); }
+    } });
   }
 
   // ---------- Accions ----------
@@ -225,6 +333,10 @@
     all.hidden = !all.hidden;
     $('#show-all').textContent = all.hidden ? 'Veure-ho tot' : 'Amagar';
   };
+  $('#open-schedule').onclick = () => { show('schedule'); renderSchedule(); window.scrollTo(0, 0); };
+  $('#close-schedule').onclick = () => { show('home'); };
+  $('#block-form').addEventListener('submit', addBlock);
+  renderDayPicker();
   $('#energy-toggle').onclick = () => {
     state.lowEnergy = !state.lowEnergy;
     writePref('lowEnergy', state.lowEnergy ? '1' : '0');
@@ -247,13 +359,17 @@
         clearTimeout(subscribe.t);
         subscribe.t = setTimeout(load, 300);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_blocks' }, () => {
+        clearTimeout(subscribe.t);
+        subscribe.t = setTimeout(load, 300);
+      })
       .subscribe();
   }
 
   let signedIn = false;
   sb.auth.onAuthStateChange((_ev, session) => {
     signedIn = !!session;
-    if (session) { show('home'); load(); subscribe(); }
+    if (session) { if ($('#schedule').hidden) show('home'); load(); subscribe(); }
     else show('login');
   });
 
@@ -261,7 +377,7 @@
     if (signedIn && document.visibilityState === 'visible') load();
   });
   // Refrescar cada 5 min perquè les tasques ajornades tornin soles
-  setInterval(render, 5 * 60e3);
+  setInterval(render, 60e3);
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
