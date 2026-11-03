@@ -58,6 +58,7 @@
     const b = await sb.from('todo_schedule_blocks').select('*').order('start_time', { ascending: true });
     if (!b.error) state.blocks = b.data;
     render();
+    runPendingAction();
   }
 
   async function update(id, patch) {
@@ -577,6 +578,115 @@
     toast('Apuntat.');
   }
 
+  // ---------- Avisos push ----------
+  const pushUrl = cfg.supabaseUrl + '/functions/v1/todo-push';
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+  function deviceName() {
+    const ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua)) return 'iPad';
+    if (/Android/.test(ua)) return 'Android';
+    return 'Ordinador';
+  }
+
+  // Una sola línia, només quan té sentit, i es pot treure per sempre.
+  function renderPushOffer() {
+    const box = $('#push-offer');
+    let text = null, canEnable = false;
+    if (readPref('pushOffer') === 'no') text = null;
+    else if (isIOS && !standalone) text = "Per rebre avisos a l'iPhone: botó Compartir, i després Afegeix a la pantalla d'inici.";
+    else if (pushSupported && Notification.permission === 'default') {
+      text = 'Vols rebre els avisos en aquest mòbil?';
+      canEnable = true;
+    }
+    box.hidden = !text;
+    if (!text) return;
+    $('#push-text').textContent = text;
+    $('#push-yes').hidden = !canEnable;
+    $('#push-no').textContent = canEnable ? 'Ara no' : "D'acord";
+  }
+
+  async function publicKey() {
+    const res = await fetch(pushUrl, { headers: { apikey: cfg.supabaseAnonKey } });
+    if (!res.ok) throw new Error('push ' + res.status);
+    const { publicKey } = await res.json();
+    return publicKey;
+  }
+
+  function keyBytes(b64) {
+    const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(bin, c => c.charCodeAt(0));
+  }
+
+  // Assegura que aquest dispositiu té subscripció amb la clau actual i que està desada.
+  async function syncPush() {
+    if (!pushSupported || Notification.permission !== 'granted') return false;
+    const reg = await navigator.serviceWorker.ready;
+    const key = await publicKey();
+    let sub = await reg.pushManager.getSubscription();
+    const subKey = sub && sub.options && sub.options.applicationServerKey;
+    if (sub && subKey) {
+      const a = new Uint8Array(subKey), b = keyBytes(key);
+      if (a.length !== b.length || a.some((x, i) => x !== b[i])) { await sub.unsubscribe(); sub = null; }
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+    const j = sub.toJSON();
+    const { error } = await sb.from('todo_push_subscriptions')
+      .upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() });
+    if (error) throw error;
+    return true;
+  }
+
+  async function enablePush() {
+    // Primer el permís, directament des del toc (l'iPhone ho exigeix).
+    const perm = await Notification.requestPermission();
+    renderPushOffer();
+    if (perm !== 'granted') { toast("D'acord, sense avisos aquí."); return; }
+    try {
+      await syncPush();
+      toast('Fet. Els avisos arribaran aquí.');
+    } catch {
+      toast("No s'han pogut activar els avisos. Ho tornaré a provar.");
+    }
+  }
+
+  // Accions des d'un avís (botons Fet / Més tard, o tocar-lo)
+  let pendingAction = null;
+  function takeUrlAction() {
+    const q = new URLSearchParams(location.search);
+    if (q.get('task') && q.get('do')) pendingAction = { task_id: q.get('task'), action: q.get('do') };
+    if (q.get('capture')) setTimeout(() => $('#capture-input').focus(), 300);
+    if (q.get('view') === 'schedule') state.openSchedule = true;
+    if (q.toString()) history.replaceState(null, '', location.pathname);
+  }
+
+  async function runPendingAction() {
+    if (!pendingAction) return;
+    const { task_id, action } = pendingAction;
+    pendingAction = null;
+    const t = state.tasks.find(x => x.id === task_id);
+    if (!t) return;
+    if (action === 'done') await markDone(t);
+    else if (action === 'later') await snooze(t);
+    else if (state.current && state.current.id !== t.id) await doNow(t);
+  }
+
+  if (pushSupported) {
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.type === 'notification') {
+        pendingAction = { task_id: e.data.task_id, action: e.data.action };
+        show('home');
+        runPendingAction();
+      }
+    });
+  }
+  $('#push-yes').onclick = enablePush;
+  $('#push-no').onclick = () => { writePref('pushOffer', 'no'); renderPushOffer(); };
+  takeUrlAction();
+
   // ---------- Esdeveniments ----------
   $('#capture').addEventListener('submit', capture);
   $('#split-save').onclick = saveSplit;
@@ -627,7 +737,13 @@
   let signedIn = false;
   sb.auth.onAuthStateChange((_ev, session) => {
     signedIn = !!session;
-    if (session) { if ($('#schedule').hidden) show('home'); load(); subscribe(); if (!state.events.length) loadMotorsport(); }
+    if (session) {
+      if (state.openSchedule) { state.openSchedule = false; $('#open-schedule').click(); }
+      else if ($('#schedule').hidden) show('home');
+      load(); subscribe(); if (!state.events.length) loadMotorsport();
+      renderPushOffer();
+      if (!syncPush.done) { syncPush.done = true; syncPush().catch(() => {}); }
+    }
     else show('login');
   });
 

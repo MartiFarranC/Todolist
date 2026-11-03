@@ -1,0 +1,3 @@
+# Només per a la CLI de Supabase (supabase functions deploy todo-push)
+[functions.todo-push]
+verify_jwt = false
