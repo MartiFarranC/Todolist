@@ -48,14 +48,14 @@
 
   // ---------- Dades ----------
   async function load() {
-    const { data, error } = await sb.from('tasks')
+    const { data, error } = await sb.from('todo_tasks')
       .select('*')
       .in('status', ['inbox', 'todo'])
       .order('rank', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
     if (error) { toast('No he pogut carregar les tasques.'); return; }
     state.tasks = data;
-    const b = await sb.from('schedule_blocks').select('*').order('start_time', { ascending: true });
+    const b = await sb.from('todo_schedule_blocks').select('*').order('start_time', { ascending: true });
     if (!b.error) state.blocks = b.data;
     render();
   }
@@ -65,7 +65,7 @@
     const before = t ? { ...t } : null;
     if (t) Object.assign(t, patch);
     render();
-    const { error } = await sb.from('tasks').update(patch).eq('id', id);
+    const { error } = await sb.from('todo_tasks').update(patch).eq('id', id);
     if (error) {
       if (t && before) Object.assign(t, before);
       render();
@@ -487,7 +487,7 @@
     };
     if (!block.label || !block.days.length) { toast('Posa-hi un nom i almenys un dia.'); return; }
     if (block.end_time <= block.start_time) { toast("L'hora final ha de ser després de l'inicial."); return; }
-    const { data, error } = await sb.from('schedule_blocks').insert(block).select().single();
+    const { data, error } = await sb.from('todo_schedule_blocks').insert(block).select().single();
     if (error) { toast("No s'ha pogut desar el bloc."); return; }
     state.blocks.push(data);
     state.blocks.sort((a, b) => Logic.minutesOf(a.start_time) - Logic.minutesOf(b.start_time));
@@ -499,11 +499,11 @@
   async function deleteBlock(b) {
     state.blocks = state.blocks.filter(x => x.id !== b.id);
     render();
-    const { error } = await sb.from('schedule_blocks').delete().eq('id', b.id);
+    const { error } = await sb.from('todo_schedule_blocks').delete().eq('id', b.id);
     if (error) { state.blocks.push(b); render(); toast("No s'ha pogut treure."); return; }
     toast('Rutina treta.', { label: 'Desfer', run: async () => {
       const { id, created_at, ...rest } = b;
-      const r = await sb.from('schedule_blocks').insert(rest).select().single();
+      const r = await sb.from('todo_schedule_blocks').insert(rest).select().single();
       if (!r.error) { state.blocks.push(r.data); render(); }
     } });
   }
@@ -527,7 +527,7 @@
   async function undo(t, status) {
     state.tasks.push({ ...t, status });
     render();
-    await sb.from('tasks').update({ status }).eq('id', t.id);
+    await sb.from('todo_tasks').update({ status }).eq('id', t.id);
   }
 
   async function snooze(t) {
@@ -555,7 +555,7 @@
     if (!t) return;
     const steps = Logic.splitSteps(t, $('#split-input').value.split('\n'));
     if (!steps.length) { $('#split').hidden = true; return; }
-    const { data, error } = await sb.from('tasks').insert(steps.map(s => {
+    const { data, error } = await sb.from('todo_tasks').insert(steps.map(s => {
       const { created_at, ...rest } = s; return rest;
     })).select();
     if (error) { toast('No s\'han pogut desar els passos.'); return; }
@@ -570,7 +570,7 @@
     const title = input.value.trim();
     if (!title) return;
     input.value = '';
-    const { data, error } = await sb.from('tasks').insert({ title, status: 'inbox' }).select().single();
+    const { data, error } = await sb.from('todo_tasks').insert({ title, status: 'inbox' }).select().single();
     if (error) { input.value = title; toast('No s\'ha pogut apuntar.'); return; }
     state.tasks.push(data);
     render();
@@ -613,11 +613,11 @@
   function subscribe() {
     if (channel) return;
     channel = sb.channel('tasks')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'todo_tasks' }, () => {
         clearTimeout(subscribe.t);
         subscribe.t = setTimeout(load, 300);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_blocks' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'todo_schedule_blocks' }, () => {
         clearTimeout(subscribe.t);
         subscribe.t = setTimeout(load, 300);
       })
