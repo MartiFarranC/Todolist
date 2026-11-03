@@ -74,5 +74,9 @@ rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
 
 ## Estructura
 - `index.html`, `style.css`, `app.js` (UI), `logic.js` (ordre i textos, sense DOM), `config.js` (URL i anon key públiques)
-- `sw.js`, `manifest.webmanifest`: PWA instal·lable
-- `supabase/schema.sql`: taules, RLS, API per a Claude i enviament d'avisos per ntfy (pg_cron cada minut)
+- `sw.js`, `manifest.webmanifest`: PWA instal·lable, rep avisos push (botons Fet / Més tard) i té dreceres
+- `supabase/schema.sql`: taules, RLS, API per a Claude i enviament d'avisos (pg_cron cada minut).
+  Push a l'app si hi ha dispositius a `todo_push_subscriptions`; si no, ntfy com a reserva.
+- `supabase/functions/todo-push/index.ts`: Edge Function (sense JWT) que xifra i envia els push (Web Crypto, sense
+  dependències). Genera les claus VAPID el primer cop. `GET ?widget=<widget_key>` torna la tasca d'ara per al widget
+  KWGT d'Android (vegeu README). Les web apps no poden tenir widgets propis ni a Android ni a iOS.

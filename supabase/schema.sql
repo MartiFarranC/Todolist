@@ -38,6 +38,16 @@ insert into todo_private.config (owner_email)
 values ('martifarranc@gmail.com')               -- <<< el teu correu d'inici de sessió
 on conflict (id) do nothing;
 
+-- Notificacions push (Web Push) i widget
+alter table todo_private.config add column if not exists push_url     text
+  default 'https://mjdbqbcyensvyvhzegrc.supabase.co/functions/v1/todo-push';
+alter table todo_private.config add column if not exists push_secret  text not null
+  default encode(extensions.gen_random_bytes(24), 'hex');
+alter table todo_private.config add column if not exists vapid_public  text;  -- les genera la funció todo-push
+alter table todo_private.config add column if not exists vapid_private text;
+alter table todo_private.config add column if not exists widget_key   text not null
+  default encode(extensions.gen_random_bytes(12), 'hex');  -- només llegeix la tasca d'ara
+
 -- ---------------------------------------------------------------------
 -- Tasques
 -- ---------------------------------------------------------------------
@@ -105,6 +115,18 @@ select * from (values
 ) v
 where not exists (select 1 from public.todo_schedule_blocks);
 
+-- ---------------------------------------------------------------------
+-- Dispositius subscrits a notificacions push (un per mòbil o navegador)
+-- ---------------------------------------------------------------------
+create table if not exists public.todo_push_subscriptions (
+  endpoint   text primary key,
+  p256dh     text not null,
+  auth       text not null,
+  device     text,
+  created_at timestamptz not null default now(),
+  last_ok_at timestamptz
+);
+
 create or replace function todo_private.max_three_reminders() returns trigger
 language plpgsql as $$
 begin
@@ -148,8 +170,14 @@ revoke all on all functions in schema todo_private from public, anon, authentica
 grant usage on schema todo_private to authenticated;
 grant execute on function todo_private.is_owner() to authenticated;
 
-grant select, insert, update, delete on public.todo_tasks, public.todo_reminders, public.todo_schedule_blocks to authenticated;
-revoke all on public.todo_tasks, public.todo_reminders, public.todo_schedule_blocks from anon;
+grant select, insert, update, delete on public.todo_tasks, public.todo_reminders, public.todo_schedule_blocks,
+  public.todo_push_subscriptions to authenticated;
+revoke all on public.todo_tasks, public.todo_reminders, public.todo_schedule_blocks,
+  public.todo_push_subscriptions from anon;
+alter table public.todo_push_subscriptions enable row level security;
+drop policy if exists owner_all on public.todo_push_subscriptions;
+create policy owner_all on public.todo_push_subscriptions
+  for all to authenticated using (todo_private.is_owner()) with check (todo_private.is_owner());
 alter table public.todo_schedule_blocks enable row level security;
 drop policy if exists owner_all on public.todo_schedule_blocks;
 create policy owner_all on public.todo_schedule_blocks
@@ -284,7 +312,7 @@ begin
     timezone    = coalesce(changes->>'timezone', timezone),
     app_url     = coalesce(changes->>'app_url', app_url)
   returning * into c;
-  return to_jsonb(c) - 'claude_key';
+  return to_jsonb(c) - 'claude_key' - 'push_secret' - 'vapid_private';
 end $$;
 
 -- Horari: blocks = null només llegeix; un array substitueix tot l'horari.
@@ -322,7 +350,8 @@ grant execute on function public.todo_claude_delete_task(text, uuid)          to
 grant execute on function public.todo_claude_config(text, jsonb)              to anon, authenticated;
 
 -- ---------------------------------------------------------------------
--- Enviament d'avisos per ntfy (cada minut, amb pg_cron)
+-- Enviament d'avisos (cada minut, amb pg_cron)
+-- Push a l'app si hi ha algun dispositiu subscrit; si no, ntfy com a reserva.
 -- ---------------------------------------------------------------------
 create or replace function todo_private.ntfy(title text, message text, priority int, tags text[] default '{}')
 returns void language plpgsql security definer set search_path = '' as $$
@@ -336,6 +365,104 @@ begin
     headers := '{"Content-Type": "application/json"}'::jsonb
   );
 end $$;
+
+-- Push: la funció todo-push (Edge Function) xifra i envia a cada dispositiu
+create or replace function todo_private.push(title text, message text, level text,
+                                             tag text default null, task_id uuid default null)
+returns void language plpgsql security definer set search_path = '' as $$
+declare c todo_private.config;
+begin
+  select * into c from todo_private.config;
+  perform net.http_post(
+    url     := c.push_url,
+    body    := jsonb_build_object('secret', c.push_secret, 'title', title, 'body', message,
+                                  'level', level, 'tag', tag, 'task_id', task_id, 'url', c.app_url),
+    headers := '{"Content-Type": "application/json"}'::jsonb
+  );
+end $$;
+
+create or replace function todo_private.notify(title text, message text, level text,
+                                               tag text default null, task_id uuid default null)
+returns void language plpgsql security definer set search_path = '' as $$
+declare c todo_private.config;
+begin
+  select * into c from todo_private.config;
+  if c.push_url is not null and exists (select 1 from public.todo_push_subscriptions) then
+    perform todo_private.push(title, message, level, tag, task_id);
+  else
+    perform todo_private.ntfy(title, message,
+      case level when 'urgent' then 5 when 'important' then 4 when 'digest' then 3 else 2 end,
+      case level when 'urgent' then array['rotating_light'] when 'important' then array['bell']
+                 when 'digest' then array['sunrise'] else array['seedling'] end);
+  end if;
+end $$;
+
+-- Només per a la funció todo-push (service_role): claus VAPID i dispositius
+create or replace function public.todo_push_state()
+returns jsonb language sql security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'secret', c.push_secret, 'vapid_public', c.vapid_public, 'vapid_private', c.vapid_private,
+    'subject', c.app_url,
+    'subscriptions', coalesce((select jsonb_agg(to_jsonb(s)) from public.todo_push_subscriptions s), '[]'))
+  from todo_private.config c
+$$;
+create or replace function public.todo_push_set_vapid(pub text, priv text)
+returns void language sql security definer set search_path = '' as $$
+  update todo_private.config set vapid_public = pub, vapid_private = priv where vapid_public is null
+$$;
+revoke all on function public.todo_push_state() from public, anon, authenticated;
+revoke all on function public.todo_push_set_vapid(text, text) from public, anon, authenticated;
+grant execute on function public.todo_push_state() to service_role;
+grant execute on function public.todo_push_set_vapid(text, text) to service_role;
+
+-- Widget de la pantalla d'inici: només la tasca d'ara (o la rutina en curs).
+-- Protegit per widget_key, que no deixa canviar res.
+create or replace function public.todo_widget_now(key text)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare
+  c todo_private.config;
+  b record;
+  t record;
+  local_now timestamp;
+begin
+  select * into c from todo_private.config;
+  if key is null or key <> c.widget_key then
+    raise exception 'clau incorrecta' using errcode = '28000';
+  end if;
+  local_now := now() at time zone c.timezone;
+  select bl.label, bl.start_time, bl.end_time,
+         case when local_now::time >= bl.start_time and local_now::time < bl.end_time then 'routine' else 'buffer' end as phase
+    into b
+  from public.todo_schedule_blocks bl
+  where bl.busy
+    and extract(isodow from local_now)::int = any (bl.days)
+    and local_now::time >= bl.start_time - make_interval(mins => bl.buffer_min)
+    and local_now::time <  bl.end_time   + make_interval(mins => bl.buffer_min)
+  order by bl.start_time limit 1;
+  select tk.id, tk.title, tk.first_step, tk.estimate_min into t
+  from public.todo_tasks tk
+  where tk.status in ('todo','inbox')
+    and (tk.snoozed_until is null or tk.snoozed_until <= now())
+    and (tk.start_at is null or tk.start_at <= now())
+    and not exists (select 1 from public.todo_tasks ch where ch.parent_id = tk.id and ch.status in ('inbox','todo'))
+  order by tk.rank nulls last, tk.due_at nulls last, tk.importance desc, tk.created_at
+  limit 1;
+  return jsonb_build_object(
+    -- text i sub: dues línies ja fetes, per a widgets que no saben fer lògica (KWGT)
+    'text', case when b.label is null then coalesce(t.title, 'Res pendent. Descansa.')
+                 when b.phase = 'routine' then b.label
+                 else 'Marge de ' || b.label end,
+    'sub',  case when b.label is null then coalesce('Primer pas: ' || t.first_step, '')
+                 when b.phase = 'routine' then 'Fins a les ' || to_char(b.end_time, 'HH24:MI')
+                 else 'Prepara''t i desplaça''t' end,
+    'mode', case when b.label is null then 'free' else b.phase end,
+    'routine', b.label,
+    'routine_end', to_char(b.end_time, 'HH24:MI'),
+    'title', t.title, 'first_step', t.first_step, 'estimate_min', t.estimate_min,
+    'url', c.app_url, 'at', now());
+end $$;
+revoke all on function public.todo_widget_now(text) from public;
+grant execute on function public.todo_widget_now(text) to anon, authenticated;
 
 create or replace function todo_private.in_quiet_hours(c todo_private.config) returns boolean
 language sql stable as $$
@@ -397,11 +524,10 @@ begin
       continue;
     end if;
 
-    perform todo_private.ntfy(
+    perform todo_private.notify(
       coalesce(r.title, 'Recordatori'),
       coalesce(r.message, case when r.first_step is not null then 'Primer pas: ' || r.first_step else 'Toca ara' end),
-      case r.level when 'urgent' then 5 when 'important' then 4 else 2 end,
-      case r.level when 'urgent' then array['rotating_light'] when 'important' then array['bell'] else array['seedling'] end
+      r.level, 'rem-' || coalesce(r.task_id::text, r.id::text), r.task_id
     );
     update public.todo_reminders set sent_at = now() where id = r.id;
     sent_today := sent_today + 1;
@@ -411,7 +537,7 @@ begin
   if c.last_digest_on is distinct from local_today
      and (now() at time zone c.timezone)::time >= c.digest_time
      and not quiet then
-    select t.title, t.first_step into top
+    select t.id, t.title, t.first_step into top
     from public.todo_tasks t
     where t.status = 'todo'
       and (t.snoozed_until is null or t.snoozed_until <= now())
@@ -420,8 +546,8 @@ begin
     order by t.rank nulls last, t.due_at nulls last, t.created_at
     limit 1;
     if top.title is not null then
-      perform todo_private.ntfy('Avui, si només en fas una', top.title ||
-        coalesce(E'\nPrimer pas: ' || top.first_step, ''), 3, array['sunrise']);
+      perform todo_private.notify('Avui, si només en fas una', top.title ||
+        coalesce(E'\nPrimer pas: ' || top.first_step, ''), 'digest', 'digest', top.id);
     end if;
     update todo_private.config set last_digest_on = local_today;
   end if;
@@ -437,6 +563,7 @@ revoke all on all functions in schema todo_private from public, anon, authentica
 grant execute on function todo_private.is_owner() to authenticated;
 
 -- ---------------------------------------------------------------------
--- Resultat: copia aquests dos valors i passa'ls a Claude
+-- Resultat: copia aquests valors i passa'ls a Claude
+-- (widget_key és per al widget de la pantalla d'inici; només pot llegir)
 -- ---------------------------------------------------------------------
-select claude_key, ntfy_topic from todo_private.config;
+select claude_key, ntfy_topic, widget_key from todo_private.config;
