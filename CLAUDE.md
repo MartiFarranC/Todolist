@@ -43,9 +43,21 @@ rpc delete_task "{\"key\":\"$TODO_CLAUDE_KEY\",\"id\":\"<id>\"}"
 rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
 ```
 
+## Quan el Martí diu "tinc X a tal hora"
+1. Comprova xocs: `rpc check "{\"key\":\"$TODO_CLAUDE_KEY\",\"start_at\":\"...\",\"end_at\":\"...\"}"`
+   (torna rutines amb el seu marge, i tasques amb hora). Mira també els festius a `web/logic.js` (HOLIDAYS).
+2. Prioritats de les rutines (`flexible` a `todo_schedule_blocks`):
+   - **Fixa** (Feina): no s'hi posa res. No ho afegeixis: digues-li que no pot i proposa una altra hora.
+   - **Flexible** (Gimnàs): si la cosa nova és més important, substitueix la rutina aquell dia:
+     `rpc skip_block "{\"key\":\"$TODO_CLAUDE_KEY\",\"block_id\":\"<id>\",\"day\":\"2026-11-10\",\"reason\":\"Reunió\"}"`
+     (`\"undo\":true` la torna a posar). Avisa'l: "Avui no hi ha gimnàs: hi poso la reunió."
+   - Si és menys important que la rutina flexible, pregunta-li abans.
+3. Resposta: **molt curta** (TDA). Si no hi ha xocs: "Tot bé ✅ <què i quan>". Si n'hi ha: una línia amb el xoc i què has fet o què proposes.
+   Res de textos llargs.
+
 ## Horari del Martí
-- Feina: de dilluns a divendres, 9:00 a 13:00.
-- Gimnàs: de dilluns a divendres, 16:30 a 17:30.
+- Feina: de dilluns a divendres, 9:00 a 13:00. Fixa: prioritat màxima, no s'hi pot posar res.
+- Gimnàs: de dilluns a divendres, 16:30 a 17:30. Flexible: una tasca més important el pot substituir un dia.
 - 30 min de marge abans i després de cada rutina (desplaçar-se o preparar-se).
 - L'horari viu a la taula `todo_schedule_blocks` (el Martí l'edita des de la pantalla Horari de l'app).
   Durant un bloc amb `busy = true`, els avisos normals i importants esperen.
@@ -93,7 +105,7 @@ rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
   - `app/google-services.json` no es puja (cada un el descarrega de Firebase). Sense ell compila però no rep avisos.
 - `supabase/schema.sql`: taules, RLS, API per a Claude i enviament d'avisos (pg_cron cada minut).
   Push si hi ha dispositius a `todo_push_subscriptions` (l'app d'Android desa `endpoint = 'fcm:<token>'`);
-  si no, ntfy com a reserva. `supabase/android.sql` i `supabase/terminis.sql`: canvis solts per executar sobre una base ja creada.
+  si no, ntfy com a reserva. `supabase/android.sql`, `terminis.sql` i `prioritats.sql`: canvis solts per executar sobre una base ja creada.
 - `supabase/functions/todo-push/index.ts`: Edge Function (sense JWT). Envia per FCM (API v1, secret
   `FCM_SERVICE_ACCOUNT` amb el JSON del compte de servei) als `fcm:` i per Web Push als altres.
   `GET ?widget=<widget_key>` torna la tasca d'ara per al widget.

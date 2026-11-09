@@ -138,10 +138,19 @@
   // Rutines de feina: els festius no hi són.
   const isWork = b => /feina|treball/i.test(b.label || '');
 
+  // Dies que una rutina flexible (p. ex. Gimnàs) queda substituïda per una tasca més important.
+  let SKIPS = [];
+  function setSkips(list) { SKIPS = list || []; }
+  function skipOf(b, date) { const k = dateKey(date); return SKIPS.find(s => s.block_id === b.id && s.day === k) || null; }
+  function skippedOn(blocks, date) {
+    const day = isoDay(date);
+    return blocks.filter(b => (b.days || []).includes(day)).map(b => ({ block: b, skip: skipOf(b, date) })).filter(x => x.skip);
+  }
+
   function blocksForDay(blocks, date = new Date()) {
     const day = isoDay(date);
     const holiday = !!holidayOf(date);
-    return blocks.filter(b => (b.days || []).includes(day) && !(holiday && isWork(b)))
+    return blocks.filter(b => (b.days || []).includes(day) && !(holiday && isWork(b)) && !skipOf(b, date))
       .sort((a, b) => minutesOf(a.start_time) - minutesOf(b.start_time));
   }
 
@@ -300,7 +309,7 @@
     return d.map(x => DAY_NAMES[x - 1]).join(', ');
   }
 
-  const api = { urgency, holidayOf, isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
+  const api = { setSkips, skippedOn, urgency, holidayOf, isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
     queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;

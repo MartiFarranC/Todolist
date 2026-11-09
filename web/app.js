@@ -65,6 +65,9 @@
     state.tasks = data;
     const b = await sb.from('todo_schedule_blocks').select('*').order('start_time', { ascending: true });
     if (!b.error) state.blocks = b.data;
+    const since = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
+    const sk = await sb.from('todo_block_skips').select('*').gte('day', since);
+    Logic.setSkips(sk.error ? [] : sk.data);
     render();
     runPendingAction();
   }
@@ -326,6 +329,9 @@
     let markerDone = !isToday;
     const holiday = calHoliday(sched.date);
     if (holiday) tl.append(el('li', 'holiday', `Festiu · ${holiday}. Avui no hi ha feina.`));
+    for (const { block, skip } of Logic.skippedOn(calBlocks(), sched.date)) {
+      tl.append(el('li', 'holiday', `Avui no: ${block.label}` + (skip.reason ? ` · ${skip.reason}` : '')));
+    }
     const marker = () => {
       tl.append(el('li', 'marker', 'Ara · ' + Logic.fmtMin(now.getHours() * 60 + now.getMinutes())));
       markerDone = true;
@@ -473,7 +479,8 @@
       const txt = el('span', null, b.label);
       txt.append(el('span', 'sub',
         `${Logic.daysText(b.days)} · ${Logic.hm(b.start_time)} – ${Logic.hm(b.end_time)}` +
-        (Logic.bufferOf(b) ? ` · marge ${Logic.bufferOf(b)} min` : '') + (b.busy === false ? ' · lliure' : '')));
+        (Logic.bufferOf(b) ? ` · marge ${Logic.bufferOf(b)} min` : '') + (b.busy === false ? ' · lliure' : '') +
+        (b.flexible ? ' · flexible' : ' · fixa')));
       const del = el('button', 'link', 'Treure');
       del.onclick = () => deleteBlock(b);
       li.append(txt, del);
@@ -506,6 +513,7 @@
       end_time: f.get('end'),
       busy: f.get('busy') === 'on',
       buffer_min: Math.max(0, Math.min(180, parseInt(f.get('buffer'), 10) || 0)),
+      flexible: f.get('flexible') === 'on',
     };
     if (!block.label || !block.days.length) { toast('Posa-hi un nom i almenys un dia.'); return; }
     if (block.end_time <= block.start_time) { toast("L'hora final ha de ser després de l'inicial."); return; }
@@ -749,6 +757,10 @@
         subscribe.t = setTimeout(load, 300);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'todo_schedule_blocks' }, () => {
+        clearTimeout(subscribe.t);
+        subscribe.t = setTimeout(load, 300);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'todo_block_skips' }, () => {
         clearTimeout(subscribe.t);
         subscribe.t = setTimeout(load, 300);
       })
