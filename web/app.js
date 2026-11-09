@@ -16,6 +16,14 @@
   function readPref(k) { try { return localStorage.getItem('ara.' + k); } catch { return null; } }
   function writePref(k, v) { try { localStorage.setItem('ara.' + k, v); } catch { /* res */ } }
 
+  // Capes del calendari (es recorden en aquest mòbil)
+  const layers = Object.assign({ routines: true, tasks: true, holidays: true, f1: true, motogp: true },
+    (() => { try { return JSON.parse(readPref('layers') || '{}'); } catch { return {}; } })());
+  const calBlocks = () => layers.routines ? state.blocks : [];
+  const calTasks = () => layers.tasks ? state.tasks : [];
+  const calEvents = () => state.events.filter(e => layers[e.series] !== false);
+  const calHoliday = d => layers.holidays ? Logic.holidayOf(d) : null;
+
   function show(id) {
     for (const v of document.querySelectorAll('.view')) v.hidden = v.id !== id;
   }
@@ -314,9 +322,9 @@
     tl.innerHTML = '';
     const now = new Date();
     const isToday = Logic.sameDay(sched.date, now);
-    const items = Logic.dayItems(state.blocks, state.tasks, sched.date, now, state.events);
+    const items = Logic.dayItems(calBlocks(), calTasks(), sched.date, now, calEvents());
     let markerDone = !isToday;
-    const holiday = Logic.holidayOf(sched.date);
+    const holiday = calHoliday(sched.date);
     if (holiday) tl.append(el('li', 'holiday', `Festiu · ${holiday}. Avui no hi ha feina.`));
     const marker = () => {
       tl.append(el('li', 'marker', 'Ara · ' + Logic.fmtMin(now.getHours() * 60 + now.getMinutes())));
@@ -358,7 +366,7 @@
     grid.innerHTML = '';
     const now = new Date();
     const days = Logic.weekDays(sched.date);
-    const perDay = days.map(d => Logic.dayItems(state.blocks, state.tasks, d, now, state.events));
+    const perDay = days.map(d => Logic.dayItems(calBlocks(), calTasks(), d, now, calEvents()));
     // Franja visible: de la primera a l'última cosa, com a mínim 8:00 – 21:00
     let lo = 8 * 60, hi = 21 * 60;
     for (const items of perDay) for (const i of items) { lo = Math.min(lo, i.start); hi = Math.max(hi, i.end, i.start + 30); }
@@ -368,7 +376,7 @@
 
     grid.append(el('div'));
     days.forEach(d => {
-      const hol = Logic.holidayOf(d);
+      const hol = calHoliday(d);
       const h = el('div', 'head' + (Logic.sameDay(d, now) ? ' today' : '') + (hol ? ' holiday' : ''));
       h.append(document.createTextNode(Logic.DAY_NAMES[Logic.isoDay(d) - 1]));
       h.append(el('b', null, String(d.getDate())));
@@ -431,21 +439,21 @@
         if (d.getMonth() !== sched.date.getMonth()) cls.push('out');
         if (Logic.sameDay(d, now)) cls.push('today');
         if (past) cls.push('past');
-        const hol = Logic.holidayOf(d);
+        const hol = calHoliday(d);
         if (hol) cls.push('holiday');
         const b = el('button', cls.join(' '));
         b.type = 'button';
         b.append(el('span', null, String(d.getDate())));
         const dots = el('span', 'dots');
-        const evs = Logic.eventsOnDay(state.events, d);
+        const evs = Logic.eventsOnDay(calEvents(), d);
         const series = [...new Set(evs.map(e => e.series))];
         for (const sr of series) {
           const major = evs.some(e => e.series === sr && e.event.session.match(/^(gp|race)$/));
           dots.append(el('span', `dot series-${sr}${major ? ' major' : ''}`));
         }
-        for (const _t of Logic.tasksOnDay(state.tasks, d).slice(0, 3)) dots.append(el('span', 'dot'));
+        for (const _t of Logic.tasksOnDay(calTasks(), d).slice(0, 3)) dots.append(el('span', 'dot'));
         b.append(dots);
-        const nTasks = Logic.tasksOnDay(state.tasks, d).length;
+        const nTasks = Logic.tasksOnDay(calTasks(), d).length;
         if (hol) b.title = hol;
         b.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long' }) +
           (hol ? `, festiu: ${hol}` : '') +
@@ -502,7 +510,7 @@
     if (!block.label || !block.days.length) { toast('Posa-hi un nom i almenys un dia.'); return; }
     if (block.end_time <= block.start_time) { toast("L'hora final ha de ser després de l'inicial."); return; }
     const { data, error } = await sb.from('todo_schedule_blocks').insert(block).select().single();
-    if (error) { toast("No s'ha pogut desar el bloc."); return; }
+    if (error) { console.error(error); toast(`No s'ha pogut desar la rutina: ${error.message}`); return; }
     state.blocks.push(data);
     state.blocks.sort((a, b) => Logic.minutesOf(a.start_time) - Logic.minutesOf(b.start_time));
     e.target.reset();
@@ -703,6 +711,15 @@
   $('#busy-line').onclick = () => { state.overrideKey = null; render(); };
   $('#open-schedule').onclick = () => { sched.date = new Date(); show('schedule'); renderSchedule(); window.scrollTo(0, 0); };
   for (const t of document.querySelectorAll('.segmented [role=tab]')) t.onclick = () => setView(t.dataset.view);
+  for (const b of document.querySelectorAll('#layers [data-layer]')) {
+    b.setAttribute('aria-pressed', String(layers[b.dataset.layer] !== false));
+    b.onclick = () => {
+      layers[b.dataset.layer] = !layers[b.dataset.layer];
+      b.setAttribute('aria-pressed', String(layers[b.dataset.layer]));
+      writePref('layers', JSON.stringify(layers));
+      renderSchedule();
+    };
+  }
   $('#prev-period').onclick = () => shiftPeriod(-1);
   $('#next-period').onclick = () => shiftPeriod(1);
   $('#period-title').onclick = () => { sched.date = new Date(); renderSchedule(); };

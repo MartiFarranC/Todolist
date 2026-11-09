@@ -336,3 +336,15 @@ body[data-mode="buffer"] .focus .bar > span { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Capes del calendari */
+.layers { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.layers .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; min-height: 32px; font-size: .82rem; }
+.layers .chip[aria-pressed="false"] { opacity: .55; }
+.layers .chip[aria-pressed="false"] .swatch { filter: grayscale(1); }
+.layers .swatch { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+.layers .swatch.routine { background: var(--routine); border-left: 3px solid var(--routine-edge); }
+.layers .swatch.task { background: var(--accent-soft); border-left: 3px solid var(--accent); }
+.layers .swatch.holiday { background: var(--accent-soft); border: 1px solid var(--accent); }
+.layers .swatch.f1 { background: var(--f1); }
+.layers .swatch.motogp { background: var(--motogp); }

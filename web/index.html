@@ -101,17 +101,19 @@
         <button id="next-period" class="chip icon" type="button" aria-label="Següent">&rsaquo;</button>
       </div>
 
+      <!-- Capes del calendari: toca per mostrar o amagar -->
+      <div id="layers" class="layers" role="group" aria-label="Què es veu al calendari">
+        <button class="chip layer" type="button" data-layer="routines"><span class="swatch routine"></span>Rutines</button>
+        <button class="chip layer" type="button" data-layer="tasks"><span class="swatch task"></span>Tasques</button>
+        <button class="chip layer" type="button" data-layer="holidays"><span class="swatch holiday"></span>Festius</button>
+        <button class="chip layer" type="button" data-layer="f1"><span class="swatch f1"></span>F1</button>
+        <button class="chip layer" type="button" data-layer="motogp"><span class="swatch motogp"></span>MotoGP</button>
+      </div>
+
       <div id="view-day"><ol id="timeline" class="timeline"></ol></div>
       <div id="view-week" hidden><div id="week-grid" class="week-grid"></div></div>
       <div id="view-month" hidden><div id="month-grid" class="month-grid"></div></div>
 
-      <p class="legend">
-        <span class="swatch routine"></span> Rutina
-        <span class="swatch buffer"></span> Marge
-        <span class="swatch task"></span> Tasca
-        <span class="badge series-f1">F1</span>
-        <span class="badge series-motogp">MotoGP</span>
-      </p>
 
       <details id="week" class="later">
         <summary>Rutines</summary>
