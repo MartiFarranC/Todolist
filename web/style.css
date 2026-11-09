@@ -289,8 +289,10 @@ input[type="time"], input[type="number"] {
 .timeline .event-item.series-f1 { background: var(--f1-soft); border-left-color: var(--f1); }
 .timeline .event-item.series-motogp { background: var(--motogp-soft); border-left-color: var(--motogp); }
 .week-grid .ev.event { font-weight: 700; font-size: .6rem; color: var(--text); min-height: 14px; z-index: 1; }
-.week-grid .ev.event.series-f1 { background: var(--f1-soft); border-left: 3px solid var(--f1); right: 50%; }
-.week-grid .ev.event.series-motogp { background: var(--motogp-soft); border-left: 3px solid var(--motogp); left: 50%; }
+.week-grid .ev.event.series-f1 { background: var(--f1-soft); border-left: 3px solid var(--f1); }
+.week-grid .ev.event.series-motogp { background: var(--motogp-soft); border-left: 3px solid var(--motogp); }
+.week-grid .ev.event.half-left { right: 50%; }
+.week-grid .ev.event.half-right { left: 50%; }
 .month-grid .dot.series-f1 { background: var(--f1); border-radius: 2px; }
 .month-grid .dot.series-motogp { background: var(--motogp); border-radius: 2px; }
 .month-grid .dot.major { width: 10px; }

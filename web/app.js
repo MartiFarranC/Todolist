@@ -388,8 +388,13 @@
       col.tabIndex = 0;
       col.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric' }));
       col.onclick = () => { sched.date = d; setView('day'); };
+      // F1 i MotoGP només es parteixen la columna si se sobreposen (tenint en compte l'alçada mínima).
+      const evs = perDay[idx].filter(i => i.kind === 'event');
+      const visEnd = i => Math.max(i.end, i.start + 16 / PX);
+      const clash = i => evs.some(o => o.series !== i.series && o.start < visEnd(i) && i.start < visEnd(o));
       for (const i of perDay[idx]) {
-        const cls = i.kind === 'block' ? 'routine' : i.kind === 'event' ? `event series-${i.series}` : i.kind;
+        let cls = i.kind === 'block' ? 'routine' : i.kind === 'event' ? `event series-${i.series}` : i.kind;
+        if (i.kind === 'event' && clash(i)) cls += i.series === 'f1' ? ' half-left' : ' half-right';
         const text = i.kind === 'buffer' ? '' : i.kind === 'event' ? i.event.seriesShort : i.label;
         const ev = el('div', `ev ${cls}${i.state === 'past' ? ' past' : ''}`, text);
         ev.style.top = (i.start - lo) * PX + 'px';
