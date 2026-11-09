@@ -578,89 +578,78 @@
     toast('Apuntat.');
   }
 
-  // ---------- Avisos push ----------
-  const pushUrl = cfg.supabaseUrl + '/functions/v1/todo-push';
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  // ---------- Avisos (app d'Android) ----------
+  // L'app nativa (window.AraNative) rep els avisos amb Firebase i els mostra ella.
+  // Aquí només desem el testimoni del mòbil a todo_push_subscriptions ("fcm:<token>").
+  const native = window.AraNative || null;
+  let signedIn = false;
 
-  function deviceName() {
-    const ua = navigator.userAgent;
-    if (/iPhone/.test(ua)) return 'iPhone';
-    if (/iPad/.test(ua)) return 'iPad';
-    if (/Android/.test(ua)) return 'Android';
-    return 'Ordinador';
+  function nativeCall(fn, ...args) {
+    try { return native && typeof native[fn] === 'function' ? native[fn](...args) : null; } catch { return null; }
   }
 
   // Una sola línia, només quan té sentit, i es pot treure per sempre.
   function renderPushOffer() {
     const box = $('#push-offer');
-    let text = null, canEnable = false;
-    if (readPref('pushOffer') === 'no') text = null;
-    else if (isIOS && !standalone) text = "Per rebre avisos a l'iPhone: botó Compartir, i després Afegeix a la pantalla d'inici.";
-    else if (pushSupported && Notification.permission === 'default') {
-      text = 'Vols rebre els avisos en aquest mòbil?';
-      canEnable = true;
-    }
-    box.hidden = !text;
-    if (!text) return;
-    $('#push-text').textContent = text;
-    $('#push-yes').hidden = !canEnable;
-    $('#push-no').textContent = canEnable ? 'Ara no' : "D'acord";
+    const show = !!native && readPref('pushOffer') !== 'no' && !nativeCall('notificationsEnabled');
+    box.hidden = !show;
+    if (!show) return;
+    $('#push-text').textContent = 'Vols rebre els avisos en aquest mòbil?';
+    $('#push-yes').hidden = false;
+    $('#push-no').textContent = 'Ara no';
   }
 
-  async function publicKey() {
-    const res = await fetch(pushUrl, { headers: { apikey: cfg.supabaseAnonKey } });
-    if (!res.ok) throw new Error('push ' + res.status);
-    const { publicKey } = await res.json();
-    return publicKey;
-  }
-
-  function keyBytes(b64) {
-    const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-    return Uint8Array.from(bin, c => c.charCodeAt(0));
-  }
-
-  // Assegura que aquest dispositiu té subscripció amb la clau actual i que està desada.
+  // Assegura que aquest mòbil està desat per rebre avisos. Treu les subscripcions web antigues
+  // (la PWA), perquè no arribin avisos repetits.
   async function syncPush() {
-    if (!pushSupported || Notification.permission !== 'granted') return false;
-    const reg = await navigator.serviceWorker.ready;
-    const key = await publicKey();
-    let sub = await reg.pushManager.getSubscription();
-    const subKey = sub && sub.options && sub.options.applicationServerKey;
-    if (sub && subKey) {
-      const a = new Uint8Array(subKey), b = keyBytes(key);
-      if (a.length !== b.length || a.some((x, i) => x !== b[i])) { await sub.unsubscribe(); sub = null; }
-    }
-    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
-    const j = sub.toJSON();
+    const token = nativeCall('fcmToken');
+    if (!token) return false;
+    const endpoint = 'fcm:' + token;
     const { error } = await sb.from('todo_push_subscriptions')
-      .upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() });
+      .upsert({ endpoint, p256dh: '-', auth: '-', device: nativeCall('deviceName') || 'Android' });
     if (error) throw error;
+    await sb.from('todo_push_subscriptions').delete().not('endpoint', 'like', 'fcm:%');
     return true;
   }
+  // L'app avisa quan té el testimoni de Firebase (pot trigar uns segons el primer cop).
+  window.araOnToken = () => { if (signedIn) syncPush().catch(() => {}); };
 
-  async function enablePush() {
-    // Primer el permís, directament des del toc (l'iPhone ho exigeix).
-    const perm = await Notification.requestPermission();
+  function enablePush() {
+    if (!native) return;
+    nativeCall('requestNotifications');
+  }
+  window.araOnPermission = granted => {
     renderPushOffer();
-    if (perm !== 'granted') { toast("D'acord, sense avisos aquí."); return; }
-    try {
-      await syncPush();
-      toast('Fet. Els avisos arribaran aquí.');
-    } catch {
-      toast("No s'han pogut activar els avisos. Ho tornaré a provar.");
+    if (!granted) { toast("D'acord, sense avisos aquí."); return; }
+    syncPush().then(ok => toast(ok ? 'Fet. Els avisos arribaran aquí.' : 'Fet. Els avisos arribaran en un moment.'))
+      .catch(() => toast("No s'han pogut activar els avisos. Ho tornaré a provar."));
+  };
+
+  // Widget de la pantalla d'inici: l'app nativa necessita la widget_key (només llegeix).
+  async function syncWidget() {
+    if (!native) return;
+    if (!syncWidget.key) {
+      const { data, error } = await sb.rpc('todo_app_widget_key');
+      if (error || !data) return;
+      syncWidget.key = data;
+      nativeCall('setWidgetKey', data);
     }
+    nativeCall('refreshWidget');
   }
 
-  // Accions des d'un avís (botons Fet / Més tard, o tocar-lo)
+  // Accions des d'un avís (botons Fet / Més tard, o tocar-lo) i dreceres
   let pendingAction = null;
-  function takeUrlAction() {
-    const q = new URLSearchParams(location.search);
+  function takeUrlAction(query) {
+    const q = new URLSearchParams(query);
     if (q.get('task') && q.get('do')) pendingAction = { task_id: q.get('task'), action: q.get('do') };
-    if (q.get('capture')) setTimeout(() => $('#capture-input').focus(), 300);
-    if (q.get('view') === 'schedule') state.openSchedule = true;
-    if (q.toString()) history.replaceState(null, '', location.pathname);
+    if (q.get('capture')) {
+      if (signedIn) show('home');
+      setTimeout(() => $('#capture-input').focus(), 300);
+    }
+    if (q.get('view') === 'schedule') {
+      if (signedIn) $('#open-schedule').click(); else state.openSchedule = true;
+    }
+    if (location.search) history.replaceState(null, '', location.pathname);
   }
 
   async function runPendingAction() {
@@ -674,18 +663,20 @@
     else if (state.current && state.current.id !== t.id) await doNow(t);
   }
 
-  if (pushSupported) {
-    navigator.serviceWorker.addEventListener('message', e => {
-      if (e.data && e.data.type === 'notification') {
-        pendingAction = { task_id: e.data.task_id, action: e.data.action };
-        show('home');
-        runPendingAction();
-      }
-    });
-  }
+  // L'app nativa crida això quan s'obre des d'un avís o una drecera amb l'app ja oberta.
+  window.araIntent = query => {
+    takeUrlAction(query);
+    if (pendingAction && signedIn) { show('home'); runPendingAction(); }
+  };
+  // Botó enrere d'Android: de l'horari torna a la pantalla principal.
+  window.araBack = () => {
+    if (!$('#schedule').hidden) { show('home'); return true; }
+    return false;
+  };
+
   $('#push-yes').onclick = enablePush;
   $('#push-no').onclick = () => { writePref('pushOffer', 'no'); renderPushOffer(); };
-  takeUrlAction();
+  takeUrlAction(location.search);
 
   // ---------- Esdeveniments ----------
   $('#capture').addEventListener('submit', capture);
@@ -734,7 +725,6 @@
       .subscribe();
   }
 
-  let signedIn = false;
   sb.auth.onAuthStateChange((_ev, session) => {
     signedIn = !!session;
     if (session) {
@@ -743,16 +733,18 @@
       load(); subscribe(); if (!state.events.length) loadMotorsport();
       renderPushOffer();
       if (!syncPush.done) { syncPush.done = true; syncPush().catch(() => {}); }
+      syncWidget().catch(() => {});
     }
     else show('login');
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (signedIn && document.visibilityState === 'visible') load();
+    if (!signedIn) return;
+    if (document.visibilityState === 'visible') { load(); renderPushOffer(); }
+    else syncWidget().catch(() => {});
   });
   // Refrescar cada 5 min perquè les tasques ajornades tornin soles
   // Cada 30 s: tasques ajornades que tornen i percentatges de temps que queden
   setInterval(render, 30e3);
 
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

@@ -1,6 +1,6 @@
 # Ara · TODO list per a TDA
 
-App estàtica (GitHub Pages) + Supabase. El Martí té TDA: l'objectiu és fricció mínima i calma.
+App d'Android (WebView amb la web de `web/` + avisos, widget i dreceres natius) + Supabase. El Martí té TDA: l'objectiu és fricció mínima i calma.
 Parla-li en català, amb frases curtes.
 
 ## Principis de disseny (no els trenquis)
@@ -59,7 +59,7 @@ rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
 - L'app mostra totes les sessions (lliures, pràctica, classificació, sprint i cursa) com a rutines,
   amb el color de cada campionat (F1 terracota, MotoGP blau) i una etiqueta.
 - Font: github.com/sportstimes/f1 (`_db/f1/<any>.json`, `_db/motogp/<any>.json`), llegida en directe des del navegador.
-  Si falla, es fa servir la còpia de `data/`. Actualitza-la a l'inici de cada temporada.
+  Si falla, es fa servir la còpia de `web/data/`. Actualitza-la a l'inici de cada temporada.
 - No bloquegen avisos ni tenen marge. No programis tasques importants a sobre d'una cursa o sprint.
 
 ## Com prioritzar
@@ -73,10 +73,22 @@ rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
 7. Hora local: Europe/Madrid. Envia sempre les dates amb el desplaçament (+01:00 / +02:00).
 
 ## Estructura
-- `index.html`, `style.css`, `app.js` (UI), `logic.js` (ordre i textos, sense DOM), `config.js` (URL i anon key públiques)
-- `sw.js`, `manifest.webmanifest`: PWA instal·lable, rep avisos push (botons Fet / Més tard) i té dreceres
+- `web/`: la interfície. `index.html`, `style.css`, `app.js` (UI), `logic.js` (ordre i textos, sense DOM),
+  `config.js` (URL i anon key públiques), `vendor/` (supabase-js, sense CDN), `data/` (F1 i MotoGP).
+  Ja no és una PWA ni hi ha GitHub Pages: l'app d'Android l'empaqueta dins l'APK.
+- `android/`: projecte d'Android Studio (Kotlin, paquet `cat.martifarran.ara`). Obre `android/` a Android Studio.
+  - `MainActivity.kt`: WebView que serveix `web/` a `https://appassets.androidplatform.net/assets/index.html`.
+    La web parla amb Android amb `window.AraNative` (testimoni de Firebase, permís d'avisos, clau del widget).
+    Android crida la web amb `araIntent(query)`, `araOnToken()`, `araOnPermission(bool)` i `araBack()`.
+  - `PushService.kt` + `Notifier.kt`: reben els avisos de Firebase (missatges de dades) i els mostren amb un canal per nivell
+    (`normal`, `important`, `digest`, `urgent`) i botons Fet / Més tard (obren `ara://open?task=<id>&do=done|later`).
+  - `NowWidget.kt` + `WidgetWorker.kt`: widget natiu que llegeix `todo-push?widget=<widget_key>`.
+    L'app obté la clau amb `rpc('todo_app_widget_key')` (només el propietari).
+  - Dreceres: `res/xml/shortcuts.xml` (`ara://open?capture=1`, `ara://open?view=schedule`).
+  - `app/google-services.json` no es puja (cada un el descarrega de Firebase). Sense ell compila però no rep avisos.
 - `supabase/schema.sql`: taules, RLS, API per a Claude i enviament d'avisos (pg_cron cada minut).
-  Push a l'app si hi ha dispositius a `todo_push_subscriptions`; si no, ntfy com a reserva.
-- `supabase/functions/todo-push/index.ts`: Edge Function (sense JWT) que xifra i envia els push (Web Crypto, sense
-  dependències). Genera les claus VAPID el primer cop. `GET ?widget=<widget_key>` torna la tasca d'ara per al widget
-  KWGT d'Android (vegeu README). Les web apps no poden tenir widgets propis ni a Android ni a iOS.
+  Push si hi ha dispositius a `todo_push_subscriptions` (l'app d'Android desa `endpoint = 'fcm:<token>'`);
+  si no, ntfy com a reserva. `supabase/android.sql`: el mateix canvi per a l'app, sol.
+- `supabase/functions/todo-push/index.ts`: Edge Function (sense JWT). Envia per FCM (API v1, secret
+  `FCM_SERVICE_ACCOUNT` amb el JSON del compte de servei) als `fcm:` i per Web Push als altres.
+  `GET ?widget=<widget_key>` torna la tasca d'ara per al widget.
