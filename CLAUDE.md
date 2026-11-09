@@ -2,6 +2,7 @@
 
 App d'Android (WebView amb la web de `web/` + avisos, widget i dreceres natius) + Supabase. El Martí té TDA: l'objectiu és fricció mínima i calma.
 Parla-li en català, amb frases curtes.
+Treballa directament a `main` (commit i push). Sense branques ni PR, tret que el Martí ho demani.
 
 ## Principis de disseny (no els trenquis)
 - La pantalla principal mostra **una sola tasca**. Res de llistes llargues per defecte.
