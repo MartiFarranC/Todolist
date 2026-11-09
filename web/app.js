@@ -316,6 +316,8 @@
     const isToday = Logic.sameDay(sched.date, now);
     const items = Logic.dayItems(state.blocks, state.tasks, sched.date, now, state.events);
     let markerDone = !isToday;
+    const holiday = Logic.holidayOf(sched.date);
+    if (holiday) tl.append(el('li', 'holiday', `Festiu · ${holiday}. Avui no hi ha feina.`));
     const marker = () => {
       tl.append(el('li', 'marker', 'Ara · ' + Logic.fmtMin(now.getHours() * 60 + now.getMinutes())));
       markerDone = true;
@@ -366,9 +368,11 @@
 
     grid.append(el('div'));
     days.forEach(d => {
-      const h = el('div', 'head' + (Logic.sameDay(d, now) ? ' today' : ''));
+      const hol = Logic.holidayOf(d);
+      const h = el('div', 'head' + (Logic.sameDay(d, now) ? ' today' : '') + (hol ? ' holiday' : ''));
       h.append(document.createTextNode(Logic.DAY_NAMES[Logic.isoDay(d) - 1]));
       h.append(el('b', null, String(d.getDate())));
+      if (hol) { h.append(el('small', null, 'Festiu')); h.title = hol; }
       grid.append(h);
     });
 
@@ -427,6 +431,8 @@
         if (d.getMonth() !== sched.date.getMonth()) cls.push('out');
         if (Logic.sameDay(d, now)) cls.push('today');
         if (past) cls.push('past');
+        const hol = Logic.holidayOf(d);
+        if (hol) cls.push('holiday');
         const b = el('button', cls.join(' '));
         b.type = 'button';
         b.append(el('span', null, String(d.getDate())));
@@ -440,7 +446,9 @@
         for (const _t of Logic.tasksOnDay(state.tasks, d).slice(0, 3)) dots.append(el('span', 'dot'));
         b.append(dots);
         const nTasks = Logic.tasksOnDay(state.tasks, d).length;
+        if (hol) b.title = hol;
         b.setAttribute('aria-label', d.toLocaleDateString('ca', { weekday: 'long', day: 'numeric', month: 'long' }) +
+          (hol ? `, festiu: ${hol}` : '') +
           (nTasks ? `, ${nTasks} ${nTasks === 1 ? 'tasca' : 'tasques'}` : '') +
           (series.length ? ', ' + series.map(x => Logic.SERIES[x].name).join(' i ') : ''));
         b.onclick = () => { sched.date = d; setView('day'); };

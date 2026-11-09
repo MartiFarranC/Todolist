@@ -103,9 +103,30 @@
   function minutesOf(t) { const [h, m] = hm(t).split(':').map(Number); return h * 60 + m; }
   function minutesNow(d) { return d.getHours() * 60 + d.getMinutes(); }
 
+  // Festius d'Igualada: Catalunya + Espanya + locals (Sant Crist i Festa Major).
+  // Afegeix-hi els de l'any nou quan es publiquin (els locals d'Igualada els aprova el ple cada any).
+  const HOLIDAYS = {
+    '2026-01-01': 'Any Nou', '2026-01-06': 'Reis', '2026-04-03': 'Divendres Sant',
+    '2026-04-06': 'Dilluns de Pasqua', '2026-04-07': "Sant Crist d'Igualada", '2026-05-01': 'Festa del Treball',
+    '2026-06-24': 'Sant Joan', '2026-08-15': "L'Assumpció", '2026-08-24': "Festa Major d'Igualada",
+    '2026-09-11': 'Diada', '2026-10-12': 'Festa del Pilar', '2026-12-08': 'La Immaculada',
+    '2026-12-25': 'Nadal', '2026-12-26': 'Sant Esteve',
+    '2027-01-01': 'Any Nou', '2027-01-06': 'Reis', '2027-03-26': 'Divendres Sant',
+    '2027-03-29': 'Dilluns de Pasqua', '2027-05-01': 'Festa del Treball', '2027-06-24': 'Sant Joan',
+    '2027-09-11': 'Diada', '2027-10-12': 'Festa del Pilar', '2027-11-01': 'Tots Sants',
+    '2027-12-06': 'La Constitució', '2027-12-08': 'La Immaculada', '2027-12-25': 'Nadal',
+  };
+  function dateKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function holidayOf(date) { return HOLIDAYS[dateKey(date)] || null; }
+  // Rutines de feina: els festius no hi són.
+  const isWork = b => /feina|treball/i.test(b.label || '');
+
   function blocksForDay(blocks, date = new Date()) {
     const day = isoDay(date);
-    return blocks.filter(b => (b.days || []).includes(day))
+    const holiday = !!holidayOf(date);
+    return blocks.filter(b => (b.days || []).includes(day) && !(holiday && isWork(b)))
       .sort((a, b) => minutesOf(a.start_time) - minutesOf(b.start_time));
   }
 
@@ -263,7 +284,7 @@
     return d.map(x => DAY_NAMES[x - 1]).join(', ');
   }
 
-  const api = { isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
+  const api = { holidayOf, isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
     queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;

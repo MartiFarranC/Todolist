@@ -238,6 +238,12 @@ textarea, input[type="text"], input[type="email"], input[type="password"] {
 .month-grid .day.out { opacity: .35; }
 .month-grid .day.today { border-color: var(--accent); font-weight: 700; }
 .month-grid .day.past { color: var(--muted); }
+/* Festius: to suau de l'accent, sense vermell */
+.month-grid .day.holiday { background: var(--accent-soft); }
+.month-grid .day.holiday > span:first-child { color: var(--accent); font-weight: 700; }
+.week-grid .head.holiday b { color: var(--accent); }
+.week-grid .head small { display: block; font-size: .55rem; color: var(--accent); }
+.timeline .holiday { background: var(--accent-soft); color: var(--text); font-weight: 700; }
 .month-grid .dots { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
 .month-grid .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .month-grid .dot.routine { background: var(--routine-edge); }
