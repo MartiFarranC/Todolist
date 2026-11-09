@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ara</string>
+    <string name="widget_name">Ara · tasca d\'ara</string>
+    <string name="widget_desc">La tasca que toca ara i el primer pas</string>
+    <string name="widget_empty">Obre Ara un cop per connectar el widget</string>
+    <string name="shortcut_capture">Apunta una cosa</string>
+    <string name="shortcut_capture_short">Apunta</string>
+    <string name="shortcut_schedule">Horari</string>
+    <string name="action_done">Fet</string>
+    <string name="action_later">Més tard</string>
+    <string name="channel_normal">Avisos tranquils</string>
+    <string name="channel_normal_desc">Sense so</string>
+    <string name="channel_important">Avisos importants</string>
+    <string name="channel_important_desc">Amb so</string>
+    <string name="channel_digest">Resum del matí</string>
+    <string name="channel_digest_desc">Una tasca per començar el dia</string>
+    <string name="channel_urgent">Urgents</string>
+    <string name="channel_urgent_desc">Es queden fins que els toques. Pots deixar que saltin el No molestar.</string>
+</resources>

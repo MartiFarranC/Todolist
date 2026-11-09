@@ -116,7 +116,8 @@ select * from (values
 where not exists (select 1 from public.todo_schedule_blocks);
 
 -- ---------------------------------------------------------------------
--- Dispositius subscrits a notificacions push (un per mòbil o navegador)
+-- Dispositius subscrits a notificacions push (un per mòbil).
+-- App d'Android: endpoint = 'fcm:<token de Firebase>' (p256dh i auth no es fan servir).
 -- ---------------------------------------------------------------------
 create table if not exists public.todo_push_subscriptions (
   endpoint   text primary key,
@@ -463,6 +464,14 @@ begin
 end $$;
 revoke all on function public.todo_widget_now(text) from public;
 grant execute on function public.todo_widget_now(text) to anon, authenticated;
+
+-- L'app d'Android llegeix la widget_key per al widget natiu (només amb la sessió del propietari)
+create or replace function public.todo_app_widget_key()
+returns text language sql stable security definer set search_path = '' as $$
+  select c.widget_key from todo_private.config c where todo_private.is_owner()
+$$;
+revoke all on function public.todo_app_widget_key() from public, anon;
+grant execute on function public.todo_app_widget_key() to authenticated;
 
 create or replace function todo_private.in_quiet_hours(c todo_private.config) returns boolean
 language sql stable as $$

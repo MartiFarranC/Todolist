@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="capture"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_capture_short"
+        android:shortcutLongLabel="@string/shortcut_capture">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="ara://open?capture=1"
+            android:targetClass="cat.martifarran.ara.MainActivity"
+            android:targetPackage="cat.martifarran.ara" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="schedule"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_schedule"
+        android:shortcutLongLabel="@string/shortcut_schedule">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="ara://open?view=schedule"
+            android:targetClass="cat.martifarran.ara.MainActivity"
+            android:targetPackage="cat.martifarran.ara" />
+    </shortcut>
+</shortcuts>

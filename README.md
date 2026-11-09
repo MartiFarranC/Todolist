@@ -2,44 +2,56 @@
 
 Una TODO list pensada per al TDA: et mostra **una tasca, la que toca ara**. Claude ordena les tasques i programa els avisos; tu només fas.
 
+És una **app d'Android** (carpeta `android/`). La interfície és la web de `web/`, empaquetada dins l'app;
+els avisos, el widget i les dreceres són natius. Les dades són a Supabase (taules `todo_*`).
+
 ## Posada en marxa (una sola vegada)
-1. **Supabase**: fem servir el mateix projecte que ProjectBuddy, amb taules pròpies (`todo_*`). Al *SQL Editor* d'aquest projecte enganxa `supabase/schema.sql` i prem *Run*. Copia els dos valors que surten al final (`claude_key` i `ntfy_topic`).
-2. **Usuari**: entra amb el mateix correu i contrasenya que a ProjectBuddy. Només aquest correu (configurat a `todo_private.config`) pot veure les tasques.
-3. **config.js**: ja hi ha l'URL i la clau pública de ProjectBuddy.
-4. **GitHub Pages**: Settings → Pages → *Deploy from a branch* → `main` / root.
-5. **Funció d'avisos** (una vegada): Supabase → *Edge Functions* → *Deploy a new function* → *Via Editor*.
-   Nom: `todo-push`. Enganxa-hi `supabase/functions/todo-push/index.ts` i prem *Deploy*.
-   Després, a *Details* de la funció, desactiva *Verify JWT* (la funció es protegeix sola).
-   Amb la CLI: `supabase functions deploy todo-push --no-verify-jwt`.
-6. **Instal·la l'app**: obre-la al mòbil amb Chrome → menú ⋮ → *Instal·la l'aplicació*
-   (a l'iPhone: Safari → Compartir → *Afegeix a la pantalla d'inici*).
-7. **Avisos**: obre l'app instal·lada i prem *Activar* quan pregunti. Ja no cal ntfy:
-   només es fa servir si no hi ha cap mòbil amb els avisos activats.
+
+### 1. Supabase
+Fem servir el mateix projecte que ProjectBuddy, amb taules pròpies (`todo_*`).
+- Si és la primera vegada: al *SQL Editor* enganxa `supabase/schema.sql` i prem *Run*.
+- Si ja ho tenies: només enganxa `supabase/android.sql` i prem *Run* (afegeix una funció per al widget).
+
+### 2. Firebase (per als avisos)
+Android fa arribar els avisos amb Firebase Cloud Messaging. És gratis.
+1. Ves a <https://console.firebase.google.com> → *Crea un projecte* → nom `Ara` (Analytics no cal).
+2. Dins el projecte: icona d'Android (*Afegeix una app*) → nom del paquet: `cat.martifarran.ara` → *Registra*.
+3. Descarrega `google-services.json` i posa'l a `android/app/` (no es puja a GitHub).
+4. ⚙️ *Configuració del projecte* → *Comptes de servei* → *Genera una clau privada nova*. Es descarrega un JSON.
+5. Supabase → *Edge Functions* → *Secrets* → *Add new secret*:
+   nom `FCM_SERVICE_ACCOUNT`, valor: tot el contingut d'aquest JSON.
+6. Supabase → *Edge Functions* → `todo-push` → *Code*: enganxa `supabase/functions/todo-push/index.ts` → *Deploy*.
+   (*Verify JWT* ha de continuar desactivat.)
+
+### 3. L'app
+1. Android Studio → *Open* → tria la carpeta `android/` del repo. Espera que acabi el *Gradle sync*.
+2. Connecta el mòbil (depuració USB o sense fil) i prem ▶ *Run*.
+3. Entra amb el mateix correu i contrasenya que a ProjectBuddy.
+4. Prem *Activar* quan pregunti pels avisos.
+
+Per tenir l'APK: *Build* → *Build App Bundle(s) / APK(s)* → *Build APK(s)*.
+
+Si tenies la PWA antiga instal·lada, esborra-la (mantén premuda la icona → *Desinstal·la*).
+L'app ja treu les subscripcions de la PWA perquè no arribin avisos repetits.
 
 ## Avisos
-- `normal`: sense so. `important` i el resum del matí: amb so. `urgent`: es queda a la pantalla fins que el toques.
-- Els avisos d'una tasca porten els botons **Fet** i **Més tard** (Android). Tocar-lo obre l'app amb aquella tasca.
-- L'iPhone no mostra botons ni respecta "sense so" (tots sonen igual), i només funciona amb l'app afegida a l'inici.
-- Cap avís web pot saltar-se el *No molestar* del mòbil.
+- Quatre canals, que pots ajustar a *Ajustos → Apps → Ara → Notificacions*:
+  **Avisos tranquils** (`normal`, sense so), **Avisos importants** (so), **Resum del matí** i **Urgents**.
+- Els *Urgents* es queden fins que els toques. Per fer que saltin el *No molestar*, obre aquest canal i activa
+  *Ignora No molestar*.
+- Els avisos d'una tasca porten els botons **Fet** i **Més tard**. Tocar-lo obre l'app amb aquella tasca.
+- Les hores de silenci, el límit diari i l'horari els decideix Supabase (no el mòbil).
+- Si encara no hi ha Firebase, Supabase envia els avisos per ntfy, com abans.
+
+## Widget
+Mantén premut un espai buit de la pantalla d'inici → *Widgets* → **Ara**.
+Mostra la tasca d'ara i el primer pas; durant una rutina, la rutina i fins a quina hora.
+S'actualitza quan surts de l'app, quan arriba un avís i cada 15 minuts. Tocar-lo obre l'app.
 
 ## Dreceres
-A Android, mantén premuda la icona d'Ara: *Apunta una cosa* i *Horari*.
+Mantén premuda la icona d'Ara: *Apunta una cosa* i *Horari*.
 
-## Widget a la pantalla d'inici (Android)
-Una web app no pot crear widgets propis (ni a Android ni a iPhone). La drecera és **KWGT**, una app gratuïta
-de widgets que llegeix la tasca d'ara d'aquesta adreça (`widget_key` surt al final de `schema.sql`):
-
-```
-https://mjdbqbcyensvyvhzegrc.supabase.co/functions/v1/todo-push?widget=<widget_key>
-```
-
-1. Instal·la **KWGT Kustom Widget Maker** (Play Store).
-2. Mantén premut un espai buit de la pantalla d'inici → *Widgets* → *KWGT* → el de 4×1 o 4×2.
-3. Toca el widget buit → *+* → *Text*. Al camp *Text* posa: `$wg("ADREÇA", json, ".text")$`
-4. Un altre *Text* a sota, més petit: `$wg("ADREÇA", json, ".sub")$`
-5. Pestanya *Touch* del widget → *Launch App* → **Ara**. Desa (icona del disquet).
-
-Mostra la tasca d'ara i el primer pas. Durant una rutina mostra la rutina i fins a quina hora.
-Només llegeix: la clau del widget no permet canviar res.
+## Provar la web a l'ordinador
+`web/` també funciona en un navegador (sense avisos ni widget): `cd web && python3 -m http.server`.
 
 Detalls tècnics i com Claude hi escriu: vegeu `CLAUDE.md`.

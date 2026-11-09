@@ -1,4 +1,9 @@
-// Edge Function "todo-push": envia notificacions Web Push als dispositius subscrits.
+// Edge Function "todo-push": envia els avisos als dispositius subscrits.
+//
+// - App d'Android: endpoint "fcm:<token>" → Firebase Cloud Messaging (API v1). Cal el secret
+//   FCM_SERVICE_ACCOUNT (el JSON del compte de servei de Firebase, sencer). Missatges només de dades:
+//   l'app construeix l'avís (canal, so, botons Fet / Més tard).
+// - Navegadors (Web Push, la PWA antiga): es mantenen per compatibilitat.
 //
 // - GET  → torna la clau pública VAPID (la crea el primer cop i la desa a todo_private.config).
 // - GET ?widget=<widget_key> → la tasca d'ara, per al widget de la pantalla d'inici.
@@ -96,6 +101,63 @@ export async function sendOne(sub: Sub, payload: object, vapid: { publicKey: str
   return res.status;
 }
 
+// ---------- Firebase Cloud Messaging (app d'Android) ----------
+type ServiceAccount = { project_id: string; client_email: string; private_key: string };
+let fcmToken: { value: string; exp: number } | null = null;
+
+function pemToPkcs8(pem: string): Uint8Array {
+  const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+// Testimoni OAuth2 a partir del compte de servei (JWT RS256), guardat ~50 min.
+async function fcmAccessToken(sa: ServiceAccount): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (fcmToken && fcmToken.exp > now + 60) return fcmToken.value;
+  const key = await crypto.subtle.importKey('pkcs8', pemToPkcs8(sa.private_key),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const head = b64u(enc.encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
+  const claims = b64u(enc.encode(JSON.stringify({
+    iss: sa.client_email, scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
+  })));
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, enc.encode(`${head}.${claims}`));
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: `${head}.${claims}.${b64u(sig)}`,
+    }),
+  });
+  if (!res.ok) throw new Error(`oauth ${res.status} ${await res.text()}`);
+  const { access_token, expires_in } = await res.json();
+  fcmToken = { value: access_token, exp: now + Math.min(Number(expires_in) || 3600, 3000) };
+  return access_token;
+}
+
+// Torna l'estat HTTP; 404 vol dir que el testimoni ja no és vàlid (app desinstal·lada).
+export async function sendFcm(token: string, payload: Record<string, unknown>, sa: ServiceAccount): Promise<number> {
+  const data: Record<string, string> = {};
+  for (const [k, v] of Object.entries(payload)) if (v != null) data[k] = String(v);
+  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await fcmAccessToken(sa)}`, 'Content-Type': 'application/json' },
+    // Prioritat alta perquè arribi a l'hora encara que el mòbil estigui en repòs (sempre es mostra un avís).
+    body: JSON.stringify({ message: { token, data, android: { priority: 'HIGH', ttl: '43200s' } } }),
+  });
+  const text = await res.text();
+  if (res.status === 400 && /UNREGISTERED|registration token is not a valid/i.test(text)) return 404;
+  if (!res.ok) console.error('fcm', res.status, text);
+  return res.status;
+}
+
+function serviceAccount(): ServiceAccount | null {
+  const raw = globalThis.Deno?.env.get('FCM_SERVICE_ACCOUNT');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { console.error('FCM_SERVICE_ACCOUNT no és JSON'); return null; }
+}
+
 // ---------- Servidor ----------
 const SUPABASE_URL = globalThis.Deno?.env.get('SUPABASE_URL') ?? '';
 const SERVICE_KEY = globalThis.Deno?.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -147,7 +209,9 @@ async function handle(req: Request): Promise<Response> {
     const msg = await req.json();
     let state = await getState();
     if (!msg.secret || msg.secret !== state.secret) return json({ error: 'secret' }, 401);
-    state = await ensureVapid(state);
+    const webSubs = state.subscriptions.filter(s => !s.endpoint.startsWith('fcm:'));
+    if (webSubs.length) state = await ensureVapid(state);
+    const sa = serviceAccount();
 
     const level = ['normal', 'important', 'urgent', 'digest'].includes(msg.level) ? msg.level : 'normal';
     const payload = {
@@ -160,7 +224,13 @@ async function handle(req: Request): Promise<Response> {
 
     const results = await Promise.all(state.subscriptions.map(async sub => {
       try {
-        const status = await sendOne(sub, payload, vapid, urgency);
+        let status: number;
+        if (sub.endpoint.startsWith('fcm:')) {
+          if (!sa) { console.error('falta el secret FCM_SERVICE_ACCOUNT'); return 0; }
+          status = await sendFcm(sub.endpoint.slice(4), payload, sa);
+        } else {
+          status = await sendOne(sub, payload, vapid, urgency);
+        }
         const enc = encodeURIComponent(sub.endpoint);
         if (status === 404 || status === 410) {
           await rest(`todo_push_subscriptions?endpoint=eq.${enc}`, { method: 'DELETE' });
