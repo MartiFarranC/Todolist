@@ -71,7 +71,11 @@ rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
 5. Si una tasca té `snooze_count` alt, pregunta si es pot partir, delegar o eliminar. Sense jutjar.
 6. Avisos: només per a coses amb hora o data real. Les tasques sense hora no porten avís (ja surten al resum del matí).
    Nivells: `normal` (silenciós), `important` (so), `urgent` (salta el No molestar i les hores de silenci; fer-lo servir molt poc).
-7. Hora local: Europe/Madrid. Envia sempre les dates amb el desplaçament (+01:00 / +02:00).
+7. Terminis ("s'ha de fer aquesta setmana / el mes que ve"): `start_at` = inici de la finestra (p. ex. dia 1 a les 00:00),
+   `due_at` = final (p. ex. dia 30 a les 23:59). No cal posar avisos: a mesura que s'acosta `due_at`, la tasca puja sola
+   (nivell 2–3 passa davant del `rank`) i rep un record al dia a partir de `nudge_time` (18:00), primer sense so i després amb so.
+   Nivells (`todo_private.urgency` i `Logic.urgency`): 1 = queda ≤ meitat o < 7 dies, 2 = ≤ un quart o < 3 dies, 3 = < 1 dia.
+8. Hora local: Europe/Madrid. Envia sempre les dates amb el desplaçament (+01:00 / +02:00).
 
 ## Estructura
 - `web/`: la interfície. `index.html`, `style.css`, `app.js` (UI), `logic.js` (ordre i textos, sense DOM),
@@ -89,7 +93,7 @@ rpc config "{\"key\":\"$TODO_CLAUDE_KEY\",\"changes\":{\"daily_limit\":5}}"
   - `app/google-services.json` no es puja (cada un el descarrega de Firebase). Sense ell compila però no rep avisos.
 - `supabase/schema.sql`: taules, RLS, API per a Claude i enviament d'avisos (pg_cron cada minut).
   Push si hi ha dispositius a `todo_push_subscriptions` (l'app d'Android desa `endpoint = 'fcm:<token>'`);
-  si no, ntfy com a reserva. `supabase/android.sql`: el mateix canvi per a l'app, sol.
+  si no, ntfy com a reserva. `supabase/android.sql` i `supabase/terminis.sql`: canvis solts per executar sobre una base ja creada.
 - `supabase/functions/todo-push/index.ts`: Edge Function (sense JWT). Envia per FCM (API v1, secret
   `FCM_SERVICE_ACCOUNT` amb el JSON del compte de servei) als `fcm:` i per Web Push als altres.
   `GET ?widget=<widget_key>` torna la tasca d'ara per al widget.

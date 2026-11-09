@@ -18,8 +18,23 @@
       .filter(t => !t.snoozed_until || new Date(t.snoozed_until).getTime() <= n)
       .filter(t => !t.start_at || new Date(t.start_at).getTime() <= n)
       .filter(t => !hasOpenChildren(t, tasks))
-      .sort(compare);
+      .sort((a, b) => boost(b, n) - boost(a, n) || compare(a, b));
   }
+
+  // Terminis: com més a prop de la data límit, més amunt (igual que todo_private.urgency a Supabase).
+  // 0 tranquil · 1 queda la meitat o menys del termini, o < 7 dies · 2 un quart o menys, o < 3 dies · 3 < 1 dia
+  const DAY = 864e5;
+  function urgency(t, now = Date.now()) {
+    if (!t.due_at) return 0;
+    const due = Date.parse(t.due_at), left = due - now;
+    const span = due - Date.parse(t.start_at || t.created_at || t.due_at);
+    if (left <= DAY) return 3;
+    if (left <= 3 * DAY || left <= span / 4) return 2;
+    if (left <= 7 * DAY || left <= span / 2) return 1;
+    return 0;
+  }
+  // Només les de nivell 2 o 3 passen davant de l'ordre de Claude.
+  function boost(t, now) { const u = urgency(t, now); return u >= 2 ? u : 0; }
 
   // Ordre: primer el que Claude ha ordenat (rank), després la safata.
   function compare(a, b) {
@@ -165,11 +180,12 @@
                                 start: e, end: Math.min(1440, e + buf), block: b });
     }
     for (const t of tasks.filter(isActive)) {
-      const when = t.start_at ? new Date(t.start_at) : t.due_at ? new Date(t.due_at) : null;
+      // Amb termini (due_at), surt el dia límit; només amb start_at, a l'hora que comença.
+      const when = t.due_at ? new Date(t.due_at) : t.start_at ? new Date(t.start_at) : null;
       if (!when || !sameDay(when, date)) continue;
       const start = minutesNow(when);
       items.push({ kind: 'task', label: t.title, start, end: start + (t.estimate_min || 0),
-                   due: !t.start_at, task: t });
+                   due: !!t.due_at, task: t });
     }
     const today = startOfDay(now).getTime(), d = startOfDay(date).getTime();
     const m = minutesNow(now);
@@ -219,7 +235,7 @@
   // Tasques amb data (inici o límit) en un dia concret
   function tasksOnDay(tasks, date) {
     return tasks.filter(isActive).filter(t => {
-      const w = t.start_at || t.due_at;
+      const w = t.due_at || t.start_at;
       return w && sameDay(new Date(w), date);
     });
   }
@@ -284,7 +300,7 @@
     return d.map(x => DAY_NAMES[x - 1]).join(', ');
   }
 
-  const api = { holidayOf, isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
+  const api = { urgency, holidayOf, isoDay, hm, minutesOf, blocksForDay, currentBlock, todayTimeline, dayItems, progress, bufferOf, durationText, startOfDay, addDays, weekDays, monthGrid, tasksOnDay, sameDay, nextUpcoming, fmtMin, daysText, DAY_NAMES, SERIES, motorsportSessions, eventsOnDay,
     queue, compare, pickNow, snoozeUntil, dueText, estimateText, splitSteps, isActive };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;
