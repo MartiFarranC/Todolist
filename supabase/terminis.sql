@@ -39,6 +39,7 @@ begin
     nudge_time  = coalesce((changes->>'nudge_time')::time, nudge_time),
     timezone    = coalesce(changes->>'timezone', timezone),
     app_url     = coalesce(changes->>'app_url', app_url)
+  where id  -- Supabase no deixa fer UPDATE sense WHERE
   returning * into c;
   return to_jsonb(c) - 'claude_key' - 'push_secret' - 'vapid_private';
 end $$;
@@ -159,7 +160,7 @@ begin
       perform todo_private.notify('Avui, si només en fas una', top.title ||
         coalesce(E'\nPrimer pas: ' || top.first_step, ''), 'digest', 'digest', top.id);
     end if;
-    update todo_private.config set last_digest_on = local_today;
+    update todo_private.config set last_digest_on = local_today where id;
   end if;
 
   -- Terminis: un record al dia per tasca, des de nudge_time (o des del resum si s'acaba abans).
