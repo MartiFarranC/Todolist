@@ -35,7 +35,7 @@ create table if not exists todo_private.config (
 );
 
 insert into todo_private.config (owner_email)
-values ('martifarranc@gmail.com')               -- <<< el teu correu d'inici de sessió
+values ('martifc04@gmail.com')                   -- <<< el teu correu d'inici de sessió
 on conflict (id) do nothing;
 
 -- Notificacions push (Web Push) i widget
